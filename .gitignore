@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+frontend/.env
+backend/.env
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+backend/eagle_taxi.db
+
+# Local AI context docs
+_AI_Context/
+
+# Local reference bank
+_Reference_bank/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
