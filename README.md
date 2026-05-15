@@ -89,13 +89,10 @@ mirae_mobility-eagle_taxi/
 - 실제 택시 호출과 결제 기능은 구현하지 않습니다.
 - API Key와 환경변수는 `.env`로 관리하고 GitHub에 업로드하지 않습니다.
 
-## 8. 기준 문서
+## 8. 기준 문서 관리
 
-공개 기준 문서는 `docs/` 폴더에서 관리합니다.
+운영 계획(안), 개발 계획(안), API 명세서, 기능명세서, 알고리즘 설계서, 화면 구성표 등 내부 기준 문서는 Google Drive와 로컬 `_AI_Context/`에서 관리합니다.
 
-- `docs/development-plan.md`
-- `docs/operation-plan.md`
-- `docs/api-spec.md`
-- `docs/feature-spec.md`
-- `docs/algorithm-design.md`
-- `docs/screen-flow.md`
+해당 기준 문서 원본 또는 변환 MD 파일은 GitHub에 업로드하지 않습니다.
+
+GitHub의 `docs/` 폴더는 추후 공개 가능한 사용자 안내 문서가 확정될 때만 사용합니다.
