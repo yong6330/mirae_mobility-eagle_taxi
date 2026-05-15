@@ -1,10 +1,101 @@
 # 독수리 택시
 
-Mirae Mobility 팀의 연세대학교 미래캠퍼스 택시 파티 중개 MVP입니다.
+## 1. 프로젝트 소개
+
+독수리 택시는 연세대학교 미래캠퍼스 학생들이 출발지, 도착지, 희망 출발 시간을 등록하고 유사한 이동 조건을 가진 학생들과 택시 파티를 구성할 수 있도록 돕는 캠퍼스 특화 택시 합승 중개 플랫폼 MVP입니다.
+
+본 프로젝트는 실제 택시 호출, 실제 결제, 소셜 로그인, 실시간 위치 추적 기능은 구현하지 않고, 학생 간 파티 생성·검색·참여·요금 분할·상태 관리 기능을 중심으로 구현합니다.
 
 - 제품 버전: `v0.1.0-alpha`
 - 문서 버전: `v0.4`
-- 기술 스택: React + FastAPI + SQLite
-- 제외 기능: 실제 택시 호출, 실제 배차, 실제 결제, 실시간 위치 추적
 
-자세한 기준 문서는 `docs/` 폴더를 확인합니다.
+## 2. 팀 정보
+
+- 팀명: Mirae Mobility
+- 프로젝트명: 독수리 택시
+- 수업: 컴퓨팅사고 팀 프로젝트
+
+## 3. 팀원 및 역할
+
+| 역할 | 이름 | 담당 |
+|---|---|---|
+| PM / 프로젝트 총괄 | 용석희 | 운영 계획, 개발 계획, 컴퓨팅사고 정리, API 명세서 초안, 발표자료, 관리자 페이지, 최종 제출물 통합 |
+| OM / 운영 총괄 | 최우진 | 알고리즘 설계 문서, 설문조사 기획 및 결과 종합, 결과 보고서 작성 |
+| TL / 백엔드 및 종합 | 이가람 | 기능명세서, FastAPI 백엔드, SQLite DB, 핵심 로직, 프론트·백엔드 연결 |
+| QA&Front / 품질 및 프론트엔드 | 심지수 | 화면 구성표, 화면 흐름표, React 프론트엔드, 테스트 기획 및 실행 |
+
+## 4. 기술 스택
+
+| 구분 | 기술 |
+|---|---|
+| Frontend | React + Vite |
+| Backend | Python FastAPI |
+| Database | SQLite |
+| Map | Kakao Maps API |
+| Realtime | FastAPI WebSocket |
+| Admin | 관리자 페이지 별도 구현 예정 |
+
+## 5. 주요 기능
+
+### Must
+
+- 회원가입
+- 로그인
+- 파티 생성
+- 파티 목록 조회
+- 파티 상세 조회
+- 파티 참여
+- 요금 자동 분할
+- 파티 상태 관리
+- SQLite 저장
+
+### Target
+
+- 지도 API 기반 출발지·도착지 표시
+- 파티 검색
+- 유사 파티 추천
+- 파티별 채팅
+- 안전 안내
+
+### 제외 기능
+
+- 실제 택시 호출
+- 실제 결제
+- 소셜 로그인
+- 실시간 위치 추적
+- 운전자 연결
+
+## 6. 폴더 구조
+
+```text
+mirae_mobility-eagle_taxi/
+├─ frontend/
+├─ backend/
+├─ docs/
+├─ _AI_Context/
+├─ _Reference_bank/
+├─ .env.example
+├─ .gitignore
+└─ README.md
+```
+
+`_AI_Context/`와 `_Reference_bank/`는 로컬 참고용 폴더이며 GitHub에는 업로드하지 않습니다.
+
+## 7. 개발 원칙
+
+- React + FastAPI + SQLite 구조를 유지합니다.
+- localStorage는 로그인 토큰 등 최소 용도 외에는 사용하지 않습니다.
+- 사용자, 파티, 참여자, 채팅 데이터는 SQLite에 저장합니다.
+- 실제 택시 호출과 결제 기능은 구현하지 않습니다.
+- API Key와 환경변수는 `.env`로 관리하고 GitHub에 업로드하지 않습니다.
+
+## 8. 기준 문서
+
+공개 기준 문서는 `docs/` 폴더에서 관리합니다.
+
+- `docs/development-plan.md`
+- `docs/operation-plan.md`
+- `docs/api-spec.md`
+- `docs/feature-spec.md`
+- `docs/algorithm-design.md`
+- `docs/screen-flow.md`
