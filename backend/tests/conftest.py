@@ -24,8 +24,13 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def register_and_login(client: TestClient, email: str, password: str = "password1234",
-                       name: str = "테스터", gender: str = "male") -> tuple[dict, str]:
+def register_and_login(
+    client: TestClient,
+    email: str,
+    password: str = "password1234",
+    name: str = "테스터",
+    gender: str = "male",  # 명세서 v0.4: male/female 필수
+) -> tuple[dict, str]:
     """회원가입 후 로그인까지 수행하고 (user_info, access_token)을 반환한다."""
     client.post(
         "/api/auth/register",

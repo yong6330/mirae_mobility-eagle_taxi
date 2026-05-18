@@ -1,4 +1,4 @@
-"""파티 도메인 서비스 — 상태 계산, 응답 직렬화 등 라우터에서 재사용하는 로직."""
+"""파티 도메인 서비스 — 명세서 v0.4 F-PARTY-006/012."""
 
 from __future__ import annotations
 
@@ -12,14 +12,20 @@ from app.utils.time import now_kst_naive, to_kst_naive
 
 
 def effective_status(party: Party, now: datetime | None = None) -> str:
-    """저장된 status를 그대로 쓰되, recruiting + 출발시각 지남이면 expired로 취급한다.
+    """저장된 status를 기준으로, 시간 경과를 반영해 실효 상태를 계산한다.
 
-    기능명세서 F-PARTY-011: '조회 시 expired로 취급' 옵션을 채택한다.
+    명세서 v0.4 F-PARTY-006 / F-PARTY-012:
+      - status=recruiting + departure_time 지남 → expired
+      - status=matched + departure_time 지남 → completed
+      - canceled, expired, completed는 그대로 유지
+    저장된 DB 값은 안 바꾸고, 응답·검증 시점에만 계산값을 사용한다.
     """
     current_time = now or now_kst_naive()
-    if party.status == PartyStatus.RECRUITING:
-        if to_kst_naive(party.departure_time) < current_time:
-            return PartyStatus.EXPIRED
+    departure = to_kst_naive(party.departure_time)
+    if party.status == PartyStatus.RECRUITING and departure < current_time:
+        return PartyStatus.EXPIRED
+    if party.status == PartyStatus.MATCHED and departure < current_time:
+        return PartyStatus.COMPLETED
     return party.status
 
 
@@ -77,6 +83,6 @@ def to_detail(party: Party) -> PartyDetail:
 
 
 def sync_status_after_join(party: Party) -> None:
-    """참여 후 인원이 max에 도달하면 status=matched로 갱신한다 — F-PARTY-004."""
+    """참여 후 인원이 max에 도달하면 status=matched로 갱신 — F-PARTY-004."""
     if len(party.members) >= party.max_members and party.status == PartyStatus.RECRUITING:
         party.status = PartyStatus.MATCHED

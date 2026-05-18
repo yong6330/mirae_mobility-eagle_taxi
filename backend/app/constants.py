@@ -33,17 +33,18 @@ UserRoleType = Literal["user", "admin"]
 
 
 class PartyStatus:
-    """파티 상태 — 기능명세서 F-PARTY-006 / API 명세서 8-3."""
+    """파티 상태 — 기능명세서 F-PARTY-006 v0.4 / API 명세서 8-3."""
 
     RECRUITING = "recruiting"  # 모집 중
     MATCHED = "matched"  # 매칭 완료 (최대 인원 도달)
     CANCELED = "canceled"  # 생성자가 취소
-    EXPIRED = "expired"  # 출발 시간 만료
+    EXPIRED = "expired"  # 출발 시간 만료 (recruiting 상태에서 시간 지남)
+    COMPLETED = "completed"  # 이용 완료 (matched 상태에서 출발 시간 지남)
 
-    ALL: tuple[str, ...] = (RECRUITING, MATCHED, CANCELED, EXPIRED)
+    ALL: tuple[str, ...] = (RECRUITING, MATCHED, CANCELED, EXPIRED, COMPLETED)
 
 
-PartyStatusType = Literal["recruiting", "matched", "canceled", "expired"]
+PartyStatusType = Literal["recruiting", "matched", "canceled", "expired", "completed"]
 
 
 class GenderRule:

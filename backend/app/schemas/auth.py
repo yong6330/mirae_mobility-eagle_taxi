@@ -1,23 +1,36 @@
-"""인증 관련 Pydantic 스키마 — 회원가입·로그인·내 정보 조회 요청/응답 정의."""
+"""인증 관련 Pydantic 스키마 — 명세서 v0.4 기준.
+
+핵심 변경 (v0.4):
+- 회원가입 응답은 user 객체를 직접 반환 (message wrapper 제거)
+- gender는 male/female 두 값만 허용 (none은 회원가입 단계에서 거부)
+- 응답에 is_active 포함
+"""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.constants import Gender, GenderType, UserRoleType
+from app.constants import GenderType, UserRoleType
+
+# 회원가입에서만 허용하는 성별 (none 제외) — 명세서 v0.4 AUTH-001
+RegisterGender = Literal["male", "female"]
 
 
 class RegisterRequest(BaseModel):
-    """POST /api/auth/register 요청 Body — 기능명세서 F-AUTH-001."""
+    """POST /api/auth/register 요청 Body — 기능명세서 v0.4 F-AUTH-001."""
 
     email: EmailStr
     password: str = Field(min_length=8, max_length=64)
     name: str = Field(min_length=1, max_length=50)
-    gender: GenderType = Gender.NONE
+    gender: RegisterGender  # 기본값 제거 — 필수 입력
 
 
 class UserOut(BaseModel):
-    """사용자 응답 객체 — 회원가입·내 정보 조회·로그인 응답에서 공통 사용."""
+    """사용자 응답 객체 — 명세서 v0.4 AUTH-001/AUTH-003/F-ACCOUNT-001 응답 형식.
+
+    필드: id, email, name, gender, role, is_active, created_at.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,18 +39,12 @@ class UserOut(BaseModel):
     name: str
     gender: GenderType
     role: UserRoleType
+    is_active: bool
     created_at: datetime
 
 
-class RegisterResponse(BaseModel):
-    """회원가입 응답 — 기능명세서 F-AUTH-001 출력값 "가입 완료 메시지" 포함."""
-
-    message: str = "회원가입이 완료되었습니다."
-    user: UserOut
-
-
 class LoginRequest(BaseModel):
-    """POST /api/auth/login 요청 Body — 기능명세서 F-AUTH-002."""
+    """POST /api/auth/login 요청 Body — 기능명세서 v0.4 F-AUTH-002."""
 
     email: EmailStr
     password: str

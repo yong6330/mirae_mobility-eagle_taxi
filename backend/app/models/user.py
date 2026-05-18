@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Integer, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.constants import Gender, UserRole
@@ -12,8 +12,9 @@ from app.database import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
+        # 명세서 v0.4: gender는 male/female만. none은 시스템 내부값 (DB 저장값으로 사용 X).
         CheckConstraint(
-            f"gender IN ('{Gender.MALE}', '{Gender.FEMALE}', '{Gender.NONE}')",
+            f"gender IN ('{Gender.MALE}', '{Gender.FEMALE}')",
             name="ck_user_gender",
         ),
         CheckConstraint(
@@ -26,8 +27,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
-    gender: Mapped[str] = mapped_column(String(10), nullable=False, default=Gender.NONE)
+    gender: Mapped[str] = mapped_column(String(10), nullable=False)  # male / female
     role: Mapped[str] = mapped_column(String(10), nullable=False, default=UserRole.USER)
+    # 명세서 v0.4 F-ACCOUNT-001 / F-ADMIN-007: 관리자가 비활성화할 수 있는 플래그.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -72,15 +72,16 @@ def test_create_party_invalid_max_members_returns_400(client):
     assert res.json()["detail"] == "최대 인원은 2명에서 4명 사이여야 합니다."
 
 
-def test_same_gender_rule_requires_creator_gender(client):
-    _, token = register_and_login(client, "nogender@yonsei.ac.kr", gender="none")
+def test_same_gender_rule_party_creation_allowed_for_gendered_user(client):
+    """v0.4: 회원가입에서 male/female만 허용되므로 same_gender 생성도 정상 동작."""
+    _, token = register_and_login(client, "samegender@yonsei.ac.kr", gender="female")
     res = client.post(
         "/api/parties",
         json=_sample_party_payload(gender_rule="same_gender"),
         headers=auth_header(token),
     )
-    assert res.status_code == 400
-    assert "성별" in res.json()["detail"]
+    assert res.status_code == 201
+    assert res.json()["party_gender"] == "female"
 
 
 def test_list_parties_default_recruiting(client):

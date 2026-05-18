@@ -22,6 +22,9 @@ def _korean_message_for(error: dict) -> str:
 
     # 필수값 누락 (Body 자체 부재 포함)
     if error_type == "missing":
+        if field == "gender":
+            # 명세서 v0.4 AUTH-001: 성별 미선택 시 별도 메시지
+            return "성별을 선택해주세요."
         return "필수 항목을 입력해주세요."
 
     # 이메일 형식 오류

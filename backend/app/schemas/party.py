@@ -79,3 +79,50 @@ class PartyListResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class FareEstimateOut(BaseModel):
+    """예상 요금 미리보기 응답 — 기능명세서 F-PARTY-005 / FARE-001.
+
+    파티 생성 전 좌표만 가지고 예상치를 미리 보여주는 용도.
+    1인 요금(per_person_fare)은 파티 인원이 아직 정해지지 않았으므로 포함하지 않는다.
+    """
+
+    estimated_fare: int
+    toll_fare: int
+    distance_meters: int
+    duration_seconds: int
+    fare_source: str
+
+
+class MyPartiesResponse(BaseModel):
+    """내 파티 목록 응답 — 기능명세서 v0.4 F-PARTY-009.
+
+    생성자는 created_parties에만 표시하고 joined_parties에 중복 노출하지 않는다.
+    """
+
+    created_parties: list[PartySummary]
+    joined_parties: list[PartySummary]
+
+
+class PartyCancelRequest(BaseModel):
+    """PATCH /api/parties/{id}/cancel 요청 Body — 기능명세서 v0.4 F-PARTY-011."""
+
+    cancel_reason: str | None = Field(default=None, max_length=500)
+
+
+class RecommendedParty(PartySummary):
+    """추천 응답 항목 — 명세서 v0.4 F-PARTY-008.
+
+    PartySummary에 match_score(0~100)와 만남 정보를 추가한다.
+    """
+
+    match_score: int
+    meeting_point: str | None = None
+    meeting_note: str | None = None
+
+
+class RecommendResponse(BaseModel):
+    """유사 파티 추천 응답 — 명세서 v0.4 F-PARTY-008."""
+
+    parties: list[RecommendedParty]
