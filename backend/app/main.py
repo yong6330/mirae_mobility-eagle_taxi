@@ -15,7 +15,7 @@ from app.config import settings
 from app.database import Base, engine
 from app.exceptions import register_exception_handlers
 from app.models import *  # noqa: F401, F403  -- import 자체로 모든 모델을 Base.metadata에 등록
-from app.routers import auth, chat_ws, fares, health, messages, my_parties, party
+from app.routers import admin, auth, chat_ws, fares, health, messages, my_parties, party
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ def register_routers() -> None:
     app.include_router(my_parties.router)
     app.include_router(messages.router)
     app.include_router(chat_ws.router)
+    app.include_router(admin.router)
 
 
 register_routers()

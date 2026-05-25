@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.constants import UserRole
 from app.database import get_db
 from app.models import User
 from app.security import decode_access_token
@@ -44,3 +45,23 @@ def get_current_user(
     if user is None:
         raise _unauthorized("유효하지 않은 토큰입니다.")
     return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """관리자 권한 검증 — 명세서 v0.4 ADMIN-001~010 공통.
+
+    실패 케이스:
+      · 비활성 사용자 → 403 "비활성화된 사용자입니다."
+      · 일반 사용자  → 403 "관리자 권한이 필요합니다."
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="비활성화된 사용자입니다.",
+        )
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자 권한이 필요합니다.",
+        )
+    return current_user

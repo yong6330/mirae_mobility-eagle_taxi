@@ -1,5 +1,11 @@
-"""GET /api/fares/estimate — 기능명세서 F-PARTY-005, FARE-001."""
+"""GET /api/fares/estimate — 기능명세서 F-PARTY-005, FARE-001.
 
+테스트 정책 — 실키 의존 분리:
+  · 로컬 `.env`에 Kakao Key가 있어도 fallback 동작은 monkeypatch로 키를 비워 검증한다.
+  · 실키 경로는 별도 통합 테스트(network 필요)로 분리할 수 있도록 fare_source만 'kakao'/'fallback' 둘 중 하나임을 확인한다.
+"""
+
+from app.services import fare as fare_service
 from tests.conftest import auth_header, register_and_login
 
 
@@ -12,8 +18,13 @@ def test_fare_estimate_requires_auth(client):
     assert res.status_code == 401
 
 
-def test_fare_estimate_returns_fallback_when_no_kakao_key(client):
-    """Kakao Key가 없으면 모든 값 0 + fare_source=fallback."""
+def test_fare_estimate_returns_fallback_when_no_kakao_key(client, monkeypatch):
+    """Kakao Key가 없으면 모든 값 0 + fare_source=fallback.
+
+    실키가 .env에 있어도 이 테스트는 키를 비워 fallback 경로만 검증한다.
+    """
+    monkeypatch.setattr(fare_service.settings, "kakao_rest_api_key", "")
+
     _, token = register_and_login(client, "fare@yonsei.ac.kr")
     res = client.get(
         "/api/fares/estimate",
