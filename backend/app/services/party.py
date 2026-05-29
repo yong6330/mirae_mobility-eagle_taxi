@@ -6,9 +6,17 @@ from datetime import datetime
 
 from app.constants import PartyStatus
 from app.models import Party
-from app.schemas.party import PartyDetail, PartyMemberOut, PartySummary
+from app.schemas.party import PartyDetail, PartyJoinResponse, PartyMemberOut, PartySummary
 from app.services.fare import per_person_fare
 from app.utils.time import now_kst_naive, to_kst_naive
+
+
+def _members_out(party: Party) -> list[PartyMemberOut]:
+    """참여자 목록을 명세 v0.4 members: {id, name, gender} 형태로 변환."""
+    return [
+        PartyMemberOut(id=m.user.id, name=m.user.name, gender=m.user.gender)
+        for m in party.members
+    ]
 
 
 def effective_status(party: Party, now: datetime | None = None) -> str:
@@ -77,8 +85,25 @@ def to_detail(party: Party) -> PartyDetail:
         created_at=party.created_at,
         canceled_at=party.canceled_at,
         cancel_reason=party.cancel_reason,
-        creator=party.creator,
-        members=[PartyMemberOut(user=m.user, joined_at=m.joined_at) for m in party.members],
+        creator_name=party.creator.name,
+        members=_members_out(party),
+    )
+
+
+def to_join_response(party: Party) -> PartyJoinResponse:
+    """참여 성공 응답 — 명세 v0.4 PARTY-006 (result_code/can_join/reason 래퍼)."""
+    current = len(party.members)
+    return PartyJoinResponse(
+        result_code=200,
+        can_join=True,
+        reason="파티에 참여하였습니다.",
+        id=party.id,
+        current_members=current,
+        max_members=party.max_members,
+        estimated_fare=party.estimated_fare,
+        per_person_fare=per_person_fare(party.estimated_fare, current),
+        status=effective_status(party),
+        members=_members_out(party),
     )
 
 

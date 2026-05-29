@@ -59,7 +59,7 @@ class Party(Base):
     toll_fare: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     distance_meters: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # F-PARTY-005 출력값: 요금 출처 — "kakao" 또는 "fallback" (Key 없을 때).
+    # F-PARTY-005 출력값: 요금 출처 — "kakao_mobility" 또는 "fallback" (Key 없을 때).
     fare_source: Mapped[str] = mapped_column(
         String(20), nullable=False, default=FareSource.FALLBACK
     )

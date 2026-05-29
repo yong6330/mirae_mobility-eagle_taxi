@@ -2,7 +2,7 @@
 
 테스트 정책 — 실키 의존 분리:
   · 로컬 `.env`에 Kakao Key가 있어도 fallback 동작은 monkeypatch로 키를 비워 검증한다.
-  · 실키 경로는 별도 통합 테스트(network 필요)로 분리할 수 있도록 fare_source만 'kakao'/'fallback' 둘 중 하나임을 확인한다.
+  · 실키 경로는 별도 통합 테스트(network 필요)로 분리할 수 있도록 fare_source만 'kakao_mobility'/'fallback' 둘 중 하나임을 확인한다.
 """
 
 from app.services import fare as fare_service

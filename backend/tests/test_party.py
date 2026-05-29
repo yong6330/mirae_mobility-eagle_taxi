@@ -42,11 +42,11 @@ def test_create_party_success(client):
     assert body["status"] == "recruiting"
     assert body["current_members"] == 1
     assert body["max_members"] == 4
-    # fare_source는 실키 유무에 따라 kakao/fallback 양쪽 모두 허용한다 (요금 로직은 test_fares.py에서 별도 검증).
-    assert body["fare_source"] in ("kakao", "fallback")
+    # fare_source는 실키 유무에 따라 kakao_mobility/fallback 양쪽 모두 허용한다 (요금 로직은 test_fares.py에서 별도 검증).
+    assert body["fare_source"] in ("kakao_mobility", "fallback")
     assert body["estimated_fare"] >= 0
     assert body["per_person_fare"] >= 0
-    assert body["creator"]["email"] == "creator@yonsei.ac.kr"
+    assert body["creator_name"] == "테스터"
     assert len(body["members"]) == 1
 
 
@@ -128,9 +128,15 @@ def test_join_party_success_updates_members_and_per_person_fare(client):
     assert res.status_code == 200, res.text
     body = res.json()
 
+    # 명세 v0.4 PARTY-006: result_code/can_join/reason 래퍼 포함.
+    assert body["result_code"] == 200
+    assert body["can_join"] is True
+    assert body["reason"] == "파티에 참여하였습니다."
     assert body["current_members"] == 2
     assert body["status"] == "matched"
     assert len(body["members"]) == 2
+    # members는 평탄 구조 {id, name, gender} — 명세 v0.4.
+    assert set(body["members"][0].keys()) == {"id", "name", "gender"}
 
 
 def test_join_party_duplicate_returns_400(client):

@@ -62,10 +62,10 @@ GenderRuleType = Literal["any", "same_gender"]
 class FareSource:
     """요금 출처 — 기능명세서 F-PARTY-005 출력값 fare_source."""
 
-    KAKAO = "kakao"  # Kakao Mobility Directions API 응답 기반
+    KAKAO = "kakao_mobility"  # Kakao Mobility Directions API 응답 기반 (명세 v0.4 표기)
     FALLBACK = "fallback"  # API Key 없거나 호출 실패 시 0원 처리
 
     ALL: tuple[str, ...] = (KAKAO, FALLBACK)
 
 
-FareSourceType = Literal["kakao", "fallback"]
+FareSourceType = Literal["kakao_mobility", "fallback"]

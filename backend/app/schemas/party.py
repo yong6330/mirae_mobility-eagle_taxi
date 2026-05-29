@@ -4,8 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants import GenderRule, GenderRuleType, PartyStatusType
-from app.schemas.auth import UserOut
+from app.constants import GenderRule, GenderRuleType, GenderType, PartyStatusType
 
 
 class PartyCreateRequest(BaseModel):
@@ -25,12 +24,11 @@ class PartyCreateRequest(BaseModel):
 
 
 class PartyMemberOut(BaseModel):
-    """파티 참여자 응답 — 상세 조회의 참여자 목록에 사용."""
+    """파티 참여자 응답 항목 — 명세 v0.4 PARTY-005/006 members: {id, name, gender}."""
 
-    model_config = ConfigDict(from_attributes=True)
-
-    user: UserOut
-    joined_at: datetime
+    id: int
+    name: str
+    gender: GenderType
 
 
 class PartySummary(BaseModel):
@@ -68,7 +66,26 @@ class PartyDetail(PartySummary):
     party_gender: str | None = None
     canceled_at: datetime | None = None
     cancel_reason: str | None = None
-    creator: UserOut
+    creator_name: str
+    members: list[PartyMemberOut]
+
+
+class PartyJoinResponse(BaseModel):
+    """파티 참여 성공 응답 — 명세 v0.4 PARTY-006.
+
+    result_code/can_join/reason 래퍼 + 갱신된 인원·요금·상태·참여자 목록.
+    실패는 기존과 동일하게 HTTPException + detail로 처리한다 (에러 코드 세분화는 회의 대기).
+    """
+
+    result_code: int
+    can_join: bool
+    reason: str
+    id: int
+    current_members: int
+    max_members: int
+    estimated_fare: int
+    per_person_fare: int
+    status: PartyStatusType
     members: list[PartyMemberOut]
 
 

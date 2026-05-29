@@ -14,12 +14,19 @@ from app.schemas.party import (
     PartyCancelRequest,
     PartyCreateRequest,
     PartyDetail,
+    PartyJoinResponse,
     PartyListResponse,
     RecommendedParty,
     RecommendResponse,
 )
 from app.services.fare import estimate_fare
-from app.services.party import effective_status, sync_status_after_join, to_detail, to_summary
+from app.services.party import (
+    effective_status,
+    sync_status_after_join,
+    to_detail,
+    to_join_response,
+    to_summary,
+)
 from app.utils.time import now_kst_naive, to_kst_naive
 
 router = APIRouter(prefix="/api/parties", tags=["parties"])
@@ -316,7 +323,7 @@ def get_party_detail(
     return to_detail(party)
 
 
-@router.post("/{party_id}/join", response_model=PartyDetail)
+@router.post("/{party_id}/join", response_model=PartyJoinResponse)
 def join_party(
     party_id: int,
     current_user: User = Depends(get_current_user),
@@ -364,7 +371,7 @@ def join_party(
     sync_status_after_join(party)
     db.commit()
 
-    return to_detail(_load_party_with_relations(db, party.id))
+    return to_join_response(_load_party_with_relations(db, party.id))
 
 
 @router.delete("/{party_id}/leave", response_model=PartyDetail)
