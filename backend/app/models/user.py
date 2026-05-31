@@ -2,11 +2,12 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.constants import Gender, UserRole
 from app.database import Base
+from app.utils.time import now_kst_naive
 
 
 class User(Base):
@@ -32,7 +33,7 @@ class User(Base):
     # 명세서 v0.4 F-ACCOUNT-001 / F-ADMIN-007: 관리자가 비활성화할 수 있는 플래그.
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=False), default=now_kst_naive, nullable=False
     )
 
     parties = relationship("Party", back_populates="creator", cascade="all, delete-orphan")

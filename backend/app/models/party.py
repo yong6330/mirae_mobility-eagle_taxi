@@ -2,11 +2,12 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.constants import FareSource, Gender, GenderRule, PartyStatus
 from app.database import Base
+from app.utils.time import now_kst_naive
 
 
 def _in_list_constraint(column_name: str, allowed: tuple[str, ...], name: str) -> CheckConstraint:
@@ -69,7 +70,7 @@ class Party(Base):
         String(20), nullable=False, default=PartyStatus.RECRUITING, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=False), default=now_kst_naive, nullable=False
     )
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
