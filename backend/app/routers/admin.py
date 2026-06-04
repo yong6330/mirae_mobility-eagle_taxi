@@ -18,9 +18,10 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
-from app.constants import PartyStatus
+from app.constants import PartyStatus, UserRole
 from app.database import get_db
-from app.deps import require_admin
+from app.deps import require_admin, require_master_admin
+from app.errors import AppError, ErrorCode
 from app.models import AdminAction, Message, Party, PartyMember, User
 from app.schemas.admin import (
     AdminActionItem,
@@ -97,11 +98,19 @@ def _load_party_for_admin(db: Session, party_id: int) -> Party:
 def _load_user_for_admin(db: Session, user_id: int) -> User:
     user = db.get(User, user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지 않는 사용자입니다.",
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 사용자입니다.", ErrorCode.USER_NOT_FOUND
         )
     return user
+
+
+def _count_active_admins(db: Session) -> int:
+    """활성 상태인 admin 수 — 마지막 admin 보호 판정용."""
+    return db.execute(
+        select(func.count(User.id)).where(
+            User.role == UserRole.ADMIN, User.is_active.is_(True)
+        )
+    ).scalar_one()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -305,11 +314,37 @@ def update_party_status(
 def update_user_role(
     user_id: int,
     payload: AdminUserRoleUpdate,
-    current_admin: User = Depends(require_admin),
+    current_admin: User = Depends(require_master_admin),
     db: Session = Depends(get_db),
 ):
-    """사용자 권한 변경 — ADMIN-006. 변경 이력은 admin_actions에 기록한다."""
+    """사용자 권한 변경 — ADMIN-006.
+
+    명세 §3주차 보완:
+      · 마스터 관리자만 호출 가능 (일반 admin은 require_master_admin에서 403).
+      · 마스터 관리자 대상 role 변경은 409 MASTER_ADMIN_PROTECTED.
+      · 마지막 활성 admin 강등은 409 LAST_ADMIN_CANNOT_BE_DEMOTED.
+    변경 이력은 admin_actions에 기록한다.
+    """
     user = _load_user_for_admin(db, user_id)
+
+    if user.master_admin:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "마스터 관리자의 권한은 변경할 수 없습니다.",
+            ErrorCode.MASTER_ADMIN_PROTECTED,
+        )
+    if (
+        user.role == UserRole.ADMIN
+        and payload.role == UserRole.USER
+        and user.is_active
+        and _count_active_admins(db) <= 1
+    ):
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "마지막 활성 관리자는 강등할 수 없습니다.",
+            ErrorCode.LAST_ADMIN_CANNOT_BE_DEMOTED,
+        )
+
     before_role = user.role
     user.role = payload.role
     log_admin_action(
@@ -341,9 +376,25 @@ def update_user_active(
 ):
     """사용자 활성 상태 변경 — ADMIN-007. 변경 이력은 admin_actions에 기록한다.
 
+    명세 §3주차 보완: 마스터 관리자 비활성화와 마지막 활성 admin 비활성화는 409.
     is_active=false로 바꾸면 로그인/주요 기능 이용이 차단된다 (auth.py에서 401/403).
     """
     user = _load_user_for_admin(db, user_id)
+
+    if payload.is_active is False:
+        if user.master_admin:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "마스터 관리자는 비활성화할 수 없습니다.",
+                ErrorCode.MASTER_ADMIN_PROTECTED,
+            )
+        if user.role == UserRole.ADMIN and user.is_active and _count_active_admins(db) <= 1:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "마지막 활성 관리자는 비활성화할 수 없습니다.",
+                ErrorCode.LAST_ADMIN_CANNOT_BE_DEACTIVATED,
+            )
+
     before_active = str(user.is_active)
     user.is_active = payload.is_active
     log_admin_action(

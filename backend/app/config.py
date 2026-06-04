@@ -31,16 +31,27 @@ class Settings(BaseSettings):
 
     # ─ 관리자 이메일 (콤마 구분) — 가입 시 자동 admin 부여 ──────────
     admin_emails: str = ""
+    # 마스터 관리자 이메일 — role 변경 권한 + 보호 대상 (명세 §3주차 보완).
+    master_admin_emails: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
         """콤마 구분 문자열을 리스트로 변환한다."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
+    @staticmethod
+    def _email_set(raw: str) -> set[str]:
+        return {email.strip().lower() for email in raw.split(",") if email.strip()}
+
+    @property
+    def master_admin_email_set(self) -> set[str]:
+        """소문자 정규화된 마스터 관리자 이메일 집합."""
+        return self._email_set(self.master_admin_emails)
+
     @property
     def admin_email_set(self) -> set[str]:
-        """소문자 정규화된 관리자 이메일 집합."""
-        return {email.strip().lower() for email in self.admin_emails.split(",") if email.strip()}
+        """가입 시 자동 admin 부여 대상 — 일반 admin + 마스터 admin 이메일 합집합."""
+        return self._email_set(self.admin_emails) | self.master_admin_email_set
 
 
 settings = Settings()

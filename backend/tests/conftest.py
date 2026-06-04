@@ -3,6 +3,9 @@
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_eagle_taxi.db")
+# 테스트의 기본 관리자(admin@yonsei.ac.kr)를 마스터 관리자로 취급한다.
+# ADMIN-006(role 변경)은 마스터 전용이므로 테스트 actor가 마스터여야 한다.
+os.environ.setdefault("MASTER_ADMIN_EMAILS", "admin@yonsei.ac.kr")
 
 import pytest
 from fastapi.testclient import TestClient

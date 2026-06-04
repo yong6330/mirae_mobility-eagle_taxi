@@ -21,12 +21,15 @@ def test_register_returns_user_object_directly(client):
     assert res.status_code == 201, res.text
 
     body = res.json()
-    assert set(body.keys()) == {"id", "email", "name", "gender", "role", "is_active", "created_at"}
+    assert set(body.keys()) == {
+        "id", "email", "name", "gender", "role", "is_active", "master_admin", "created_at"
+    }
     assert body["email"] == "test@yonsei.ac.kr"
     assert body["name"] == "이가람"
     assert body["gender"] == "male"
     assert body["role"] == "user"
     assert body["is_active"] is True
+    assert body["master_admin"] is False
 
     assert "password" not in res.text
     assert "password_hash" not in res.text

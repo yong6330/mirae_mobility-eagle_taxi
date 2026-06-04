@@ -39,3 +39,13 @@ class User(Base):
     parties = relationship("Party", back_populates="creator", cascade="all, delete-orphan")
     memberships = relationship("PartyMember", back_populates="user", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def master_admin(self) -> bool:
+        """마스터 관리자 여부 — MASTER_ADMIN_EMAILS 기준 (명세 §3주차 보완).
+
+        응답 스키마(UserOut 등)가 from_attributes로 읽어간다.
+        """
+        from app.config import settings
+
+        return self.email.lower() in settings.master_admin_email_set

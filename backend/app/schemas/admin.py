@@ -95,6 +95,7 @@ class AdminUserItem(BaseModel):
     gender: GenderType
     role: UserRoleType
     is_active: bool
+    master_admin: bool = False
     created_at: datetime
 
 
@@ -179,6 +180,7 @@ class AdminUserDetail(BaseModel):
     gender: GenderType
     role: UserRoleType
     is_active: bool
+    master_admin: bool = False
     created_at: datetime
 
 

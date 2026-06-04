@@ -65,3 +65,17 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
             status.HTTP_403_FORBIDDEN, "관리자 권한이 필요합니다.", ErrorCode.ADMIN_REQUIRED
         )
     return current_user
+
+
+def require_master_admin(current_user: User = Depends(require_admin)) -> User:
+    """마스터 관리자 전용 — 명세 §3주차 보완 ADMIN-006(role 변경)에서 사용.
+
+    일반 admin이 시도하면 403 MASTER_ADMIN_REQUIRED.
+    """
+    if not current_user.master_admin:
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            "마스터 관리자 권한이 필요합니다.",
+            ErrorCode.MASTER_ADMIN_REQUIRED,
+        )
+    return current_user

@@ -552,3 +552,57 @@ def test_admin_actions_requires_admin(client):
     assert client.get(
         "/api/admin/actions", headers=auth_header(token)
     ).status_code == 403
+
+
+# ──────────────────────────────────────────────────────────────
+# 마스터 관리자 규칙 (명세 §3주차 보완)
+# ──────────────────────────────────────────────────────────────
+
+
+def test_role_change_requires_master_admin(client):
+    """일반 admin(비마스터)이 role 변경 시도 → 403 MASTER_ADMIN_REQUIRED."""
+    _, normal_admin_token = _make_admin("normaladmin@yonsei.ac.kr")  # 마스터 아님
+    target, _ = register_and_login(client, "rtarget@yonsei.ac.kr")
+    res = client.patch(
+        f"/api/admin/users/{target['id']}/role",
+        json={"role": "admin"},
+        headers=auth_header(normal_admin_token),
+    )
+    assert res.status_code == 403
+    assert res.json()["error_code"] == "MASTER_ADMIN_REQUIRED"
+
+
+def test_master_admin_role_cannot_be_changed(client):
+    """마스터 관리자 대상 role 변경 → 409 MASTER_ADMIN_PROTECTED."""
+    master, master_token = _make_admin()  # admin@yonsei.ac.kr = 마스터
+    res = client.patch(
+        f"/api/admin/users/{master['id']}/role",
+        json={"role": "user"},
+        headers=auth_header(master_token),
+    )
+    assert res.status_code == 409
+    assert res.json()["error_code"] == "MASTER_ADMIN_PROTECTED"
+
+
+def test_master_admin_cannot_be_deactivated(client):
+    """마스터 관리자 비활성화 → 409 MASTER_ADMIN_PROTECTED."""
+    master, master_token = _make_admin()
+    res = client.patch(
+        f"/api/admin/users/{master['id']}/status",
+        json={"is_active": False},
+        headers=auth_header(master_token),
+    )
+    assert res.status_code == 409
+    assert res.json()["error_code"] == "MASTER_ADMIN_PROTECTED"
+
+
+def test_me_includes_master_admin_flag(client):
+    """AUTH-003(me)·사용자 목록 응답에 master_admin 필드 포함 (명세 §3주차 보완)."""
+    _, master_token = _make_admin()
+    res = client.get("/api/auth/me", headers=auth_header(master_token))
+    assert res.status_code == 200
+    assert res.json()["master_admin"] is True
+
+    _, normal_token = register_and_login(client, "plain@yonsei.ac.kr")
+    res2 = client.get("/api/auth/me", headers=auth_header(normal_token))
+    assert res2.json()["master_admin"] is False

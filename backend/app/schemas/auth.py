@@ -40,6 +40,7 @@ class UserOut(BaseModel):
     gender: GenderType
     role: UserRoleType
     is_active: bool
+    master_admin: bool = False
     created_at: datetime
 
 
