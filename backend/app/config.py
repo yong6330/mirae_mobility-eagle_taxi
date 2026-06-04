@@ -22,8 +22,12 @@ class Settings(BaseSettings):
     # ─ CORS (콤마 구분) ───────────────────────────────────────────
     cors_origins: str = "http://localhost:5173"
 
-    # ─ Kakao Mobility API (없으면 fallback으로 요금 0 처리) ─────────
+    # ─ Kakao Mobility API ──────────────────────────────────────────
     kakao_rest_api_key: str = ""
+    # 명세서 §10-3 요금 산정 fallback 표준:
+    #   기본은 Key 누락 시 500(FARE_CONFIG_MISSING), 호출 실패 시 502.
+    #   ALLOW_FARE_FALLBACK=true일 때만 fallback(요금 0)을 허용한다 (로컬·시연용).
+    allow_fare_fallback: bool = False
 
     # ─ 관리자 이메일 (콤마 구분) — 가입 시 자동 admin 부여 ──────────
     admin_emails: str = ""

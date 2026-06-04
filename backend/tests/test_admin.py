@@ -447,3 +447,108 @@ def test_party_detail_not_found(client):
     _, token = _make_admin()
     res = client.get("/api/admin/parties/99999", headers=auth_header(token))
     assert res.status_code == 404
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-011: GET /api/admin/system/status
+# ──────────────────────────────────────────────────────────────
+
+
+def test_system_status_returns_fields(client):
+    _, admin_token = _make_admin()
+    res = client.get("/api/admin/system/status", headers=auth_header(admin_token))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["api_status"] == "ok"
+    assert body["db_status"] == "ok"
+    assert isinstance(body["kakao_mobility_configured"], bool)
+    assert isinstance(body["fare_fallback_enabled"], bool)
+    assert "server_time" in body
+
+
+def test_system_status_requires_admin(client):
+    _, token = register_and_login(client, "normal@yonsei.ac.kr")
+    assert client.get("/api/admin/system/status").status_code == 401
+    assert client.get(
+        "/api/admin/system/status", headers=auth_header(token)
+    ).status_code == 403
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-012: GET /api/admin/actions (조작 기록)
+# ──────────────────────────────────────────────────────────────
+
+
+def test_admin_actions_logged_on_role_and_status_changes(client):
+    """ADMIN-006/007/005 수행 시 admin_actions에 기록되고 ADMIN-012로 조회된다."""
+    _, admin_token = _make_admin()
+    target, host_token = register_and_login(client, "target@yonsei.ac.kr")
+    party = client.post(
+        "/api/parties", json=_party_payload(), headers=auth_header(host_token)
+    ).json()
+
+    # role 변경
+    client.patch(
+        f"/api/admin/users/{target['id']}/role",
+        json={"role": "admin"},
+        headers=auth_header(admin_token),
+    )
+    # 활성 상태 변경
+    client.patch(
+        f"/api/admin/users/{target['id']}/status",
+        json={"is_active": False},
+        headers=auth_header(admin_token),
+    )
+    # 파티 상태 변경
+    client.patch(
+        f"/api/admin/parties/{party['id']}/status",
+        json={"status": "canceled", "admin_note": "테스트 취소"},
+        headers=auth_header(admin_token),
+    )
+
+    res = client.get("/api/admin/actions", headers=auth_header(admin_token))
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] == 3
+    types = {item["action_type"] for item in body["items"]}
+    assert types == {"user_role_update", "user_status_update", "party_status_update"}
+    # 최신순 + 필드 확인
+    latest = body["items"][0]
+    assert latest["action_type"] == "party_status_update"
+    assert latest["before_value"] == "recruiting"
+    assert latest["after_value"] == "canceled"
+    assert latest["note"] == "테스트 취소"
+    assert latest["actor_admin_name"] == "관리자"
+
+
+def test_admin_actions_filter_by_type(client):
+    _, admin_token = _make_admin()
+    target, _ = register_and_login(client, "t2@yonsei.ac.kr")
+    client.patch(
+        f"/api/admin/users/{target['id']}/role",
+        json={"role": "admin"},
+        headers=auth_header(admin_token),
+    )
+    client.patch(
+        f"/api/admin/users/{target['id']}/status",
+        json={"is_active": False},
+        headers=auth_header(admin_token),
+    )
+
+    res = client.get(
+        "/api/admin/actions?action_type=user_role_update",
+        headers=auth_header(admin_token),
+    )
+    body = res.json()
+    assert body["total"] == 1
+    assert body["items"][0]["action_type"] == "user_role_update"
+    assert body["items"][0]["target_type"] == "user"
+    assert body["items"][0]["target_id"] == target["id"]
+
+
+def test_admin_actions_requires_admin(client):
+    _, token = register_and_login(client, "n2@yonsei.ac.kr")
+    assert client.get("/api/admin/actions").status_code == 401
+    assert client.get(
+        "/api/admin/actions", headers=auth_header(token)
+    ).status_code == 403

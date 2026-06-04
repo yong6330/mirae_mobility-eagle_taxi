@@ -11,15 +11,20 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
 from app.constants import PartyStatus
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Message, Party, PartyMember, User
+from app.models import AdminAction, Message, Party, PartyMember, User
 from app.schemas.admin import (
+    AdminActionItem,
+    AdminActionsResponse,
     AdminPartiesResponse,
     AdminPartyDetailBody,
     AdminPartyDetailResponse,
@@ -30,6 +35,7 @@ from app.schemas.admin import (
     AdminRecentMessagesResponse,
     AdminRecentPartiesResponse,
     AdminStats,
+    AdminSystemStatus,
     AdminUserActiveUpdate,
     AdminUserDetail,
     AdminUserDetailResponse,
@@ -37,8 +43,10 @@ from app.schemas.admin import (
     AdminUserRoleUpdate,
     AdminUsersResponse,
 )
+from app.services.admin_action import AdminActionType, AdminTargetType, log_admin_action
 from app.services.fare import per_person_fare
 from app.services.party import effective_status
+from app.utils.time import KST
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -257,18 +265,30 @@ def list_parties(
 def update_party_status(
     party_id: int,
     payload: AdminPartyStatusUpdate,
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """파티 상태 변경 — ADMIN-005.
 
     payload.status는 PartyStatusType Literal로 이미 검증됨.
     admin_note는 cancel_reason 컬럼에 기록한다 (별도 컬럼 신설 회피).
+    변경 이력은 admin_actions에 기록한다 (ADMIN-012).
     """
     party = _load_party_for_admin(db, party_id)
+    before_status = party.status
     party.status = payload.status
     if payload.admin_note:
         party.cancel_reason = payload.admin_note
+    log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_STATUS_UPDATE,
+        target_type=AdminTargetType.PARTY,
+        target_id=party_id,
+        before_value=before_status,
+        after_value=payload.status,
+        note=payload.admin_note,
+    )
     db.commit()
     db.refresh(party)
     # 관계 재로드
@@ -285,12 +305,22 @@ def update_party_status(
 def update_user_role(
     user_id: int,
     payload: AdminUserRoleUpdate,
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """사용자 권한 변경 — ADMIN-006."""
+    """사용자 권한 변경 — ADMIN-006. 변경 이력은 admin_actions에 기록한다."""
     user = _load_user_for_admin(db, user_id)
+    before_role = user.role
     user.role = payload.role
+    log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.USER_ROLE_UPDATE,
+        target_type=AdminTargetType.USER,
+        target_id=user_id,
+        before_value=before_role,
+        after_value=payload.role,
+    )
     db.commit()
     db.refresh(user)
     return AdminUserItem.model_validate(user)
@@ -306,15 +336,25 @@ def update_user_role(
 def update_user_active(
     user_id: int,
     payload: AdminUserActiveUpdate,
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """사용자 활성 상태 변경 — ADMIN-007.
+    """사용자 활성 상태 변경 — ADMIN-007. 변경 이력은 admin_actions에 기록한다.
 
     is_active=false로 바꾸면 로그인/주요 기능 이용이 차단된다 (auth.py에서 401/403).
     """
     user = _load_user_for_admin(db, user_id)
+    before_active = str(user.is_active)
     user.is_active = payload.is_active
+    log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.USER_STATUS_UPDATE,
+        target_type=AdminTargetType.USER,
+        target_id=user_id,
+        before_value=before_active,
+        after_value=str(payload.is_active),
+    )
     db.commit()
     db.refresh(user)
     return AdminUserItem.model_validate(user)
@@ -421,3 +461,88 @@ def get_party_detail(
         members=members,
         messages_count=messages_count,
     )
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-011: GET /api/admin/system/status
+# ──────────────────────────────────────────────────────────────
+
+
+@router.get("/system/status", response_model=AdminSystemStatus)
+def get_system_status(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 시스템 상태 조회 — ADMIN-011.
+
+    서버/DB/Kakao 설정/fallback 옵션/서버 시간을 읽기 전용으로 반환한다.
+    """
+    try:
+        db.execute(select(1))
+        db_status = "ok"
+    except Exception:  # noqa: BLE001 — 상태 보고용이므로 어떤 DB 오류든 error로 표기
+        db_status = "error"
+
+    return AdminSystemStatus(
+        api_status="ok",
+        db_status=db_status,
+        kakao_mobility_configured=bool(settings.kakao_rest_api_key),
+        fare_fallback_enabled=settings.allow_fare_fallback,
+        server_time=datetime.now(KST),
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-012: GET /api/admin/actions
+# ──────────────────────────────────────────────────────────────
+
+
+@router.get("/actions", response_model=AdminActionsResponse)
+def get_admin_actions(
+    action_type: str | None = Query(default=None),
+    target_type: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 조작 기록 조회 — ADMIN-012.
+
+    role 변경/사용자 활성 변경/파티 상태 변경 이력을 최신순으로 조회한다.
+    필터: action_type, target_type (선택).
+    """
+    count_base = select(func.count(AdminAction.id))
+    base = select(AdminAction)
+
+    if action_type:
+        base = base.where(AdminAction.action_type == action_type)
+        count_base = count_base.where(AdminAction.action_type == action_type)
+    if target_type:
+        base = base.where(AdminAction.target_type == target_type)
+        count_base = count_base.where(AdminAction.target_type == target_type)
+
+    total = db.execute(count_base).scalar_one()
+    offset = (page - 1) * limit
+    stmt = (
+        base.options(selectinload(AdminAction.actor))
+        .order_by(desc(AdminAction.created_at), desc(AdminAction.id))
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = db.execute(stmt).scalars().all()
+    items = [
+        AdminActionItem(
+            id=a.id,
+            actor_admin_id=a.actor_admin_id,
+            actor_admin_name=a.actor.name if a.actor else "",
+            action_type=a.action_type,
+            target_type=a.target_type,
+            target_id=a.target_id,
+            before_value=a.before_value,
+            after_value=a.after_value,
+            note=a.note,
+            created_at=a.created_at,
+        )
+        for a in rows
+    ]
+    return AdminActionsResponse(items=items, total=total, page=page, limit=limit)

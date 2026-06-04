@@ -221,3 +221,47 @@ class AdminPartyDetailResponse(BaseModel):
     party: AdminPartyDetailBody
     members: list[AdminPartyMemberItem]
     messages_count: int
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-011: 시스템 상태 조회
+# ──────────────────────────────────────────────────────────────
+
+
+class AdminSystemStatus(BaseModel):
+    """GET /api/admin/system/status 응답 — ADMIN-011."""
+
+    api_status: str
+    db_status: str
+    kakao_mobility_configured: bool
+    fare_fallback_enabled: bool
+    server_time: datetime
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-012: 관리자 조작 기록 조회
+# ──────────────────────────────────────────────────────────────
+
+
+class AdminActionItem(BaseModel):
+    """ADMIN-012 응답 항목."""
+
+    id: int
+    actor_admin_id: int
+    actor_admin_name: str
+    action_type: str
+    target_type: str
+    target_id: int
+    before_value: str | None
+    after_value: str | None
+    note: str | None
+    created_at: datetime
+
+
+class AdminActionsResponse(BaseModel):
+    """ADMIN-012 응답 — 페이지네이션 포함."""
+
+    items: list[AdminActionItem]
+    total: int
+    page: int
+    limit: int
