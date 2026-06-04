@@ -64,7 +64,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     email = payload.email.lower()
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None or user.is_deleted or not verify_password(payload.password, user.password_hash):
         raise AppError(
             status.HTTP_401_UNAUTHORIZED,
             "이메일 또는 비밀번호가 올바르지 않습니다.",

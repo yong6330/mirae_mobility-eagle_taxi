@@ -44,7 +44,7 @@ def get_current_user(
         raise _unauthorized("유효하지 않은 토큰입니다.", ErrorCode.AUTH_TOKEN_INVALID)
 
     user = db.get(User, int(user_id))
-    if user is None:
+    if user is None or user.is_deleted:
         raise _unauthorized("유효하지 않은 토큰입니다.", ErrorCode.AUTH_TOKEN_INVALID)
     return user
 

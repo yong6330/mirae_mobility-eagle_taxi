@@ -13,11 +13,28 @@ class AdminActionType:
     USER_ROLE_UPDATE = "user_role_update"
     USER_STATUS_UPDATE = "user_status_update"
     PARTY_STATUS_UPDATE = "party_status_update"
+    # ADMIN-013~027 유지보수 API
+    USER_CREATE = "user_create"
+    USER_UPDATE = "user_update"
+    USER_PASSWORD_RESET = "user_password_reset"
+    USER_DELETE = "user_delete"
+    PARTY_CREATE = "party_create"
+    PARTY_UPDATE = "party_update"
+    PARTY_DELETE = "party_delete"
+    PARTY_MEMBER_ADD = "party_member_add"
+    PARTY_MEMBER_REMOVE = "party_member_remove"
+    PARTY_FARE_RECALCULATE = "party_fare_recalculate"
+    PARTY_FARE_OVERRIDE = "party_fare_override"
+    MESSAGE_HIDE = "message_hide"
+    ADMIN_NOTICE_CREATE = "admin_notice_create"
 
 
 class AdminTargetType:
     USER = "user"
     PARTY = "party"
+    PARTY_MEMBER = "party_member"
+    FARE = "fare"
+    MESSAGE = "message"
 
 
 def log_admin_action(
@@ -42,4 +59,5 @@ def log_admin_action(
         note=note,
     )
     db.add(action)
+    db.flush()  # admin_action_id를 응답에 싣기 위해 id를 즉시 확보
     return action

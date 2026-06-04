@@ -142,7 +142,9 @@ def list_parties(
     """
     target_status = status_filter or PartyStatus.RECRUITING
 
-    base_stmt = select(Party).where(Party.status == target_status)
+    base_stmt = select(Party).where(
+        Party.status == target_status, Party.is_deleted.is_(False)
+    )
     if target_status == PartyStatus.RECRUITING:
         base_stmt = base_stmt.where(Party.departure_time > now_kst_naive())
 
@@ -184,7 +186,9 @@ def search_parties(
     기본은 recruiting + departure_time 현재 이후 파티만 노출.
     """
     target_status = status_filter or PartyStatus.RECRUITING
-    base_stmt = select(Party).where(Party.status == target_status)
+    base_stmt = select(Party).where(
+        Party.status == target_status, Party.is_deleted.is_(False)
+    )
 
     if start_place:
         base_stmt = base_stmt.where(Party.start_place.contains(start_place))
@@ -259,6 +263,7 @@ def recommend_parties(
     base_stmt = (
         select(Party)
         .where(Party.status == PartyStatus.RECRUITING)
+        .where(Party.is_deleted.is_(False))
         .where(Party.departure_time > now_kst_naive())
         .where(Party.departure_time >= window_start)
         .where(Party.departure_time <= window_end)

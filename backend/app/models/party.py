@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.constants import FareSource, Gender, GenderRule, PartyStatus
@@ -76,7 +76,13 @@ class Party(Base):
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # F-PARTY-010: 파티 취소 시 사유 저장.
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 관리자 soft delete — ADMIN-020.
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    deleted_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
 
-    creator = relationship("User", back_populates="parties")
+    creator = relationship("User", back_populates="parties", foreign_keys=[creator_id])
     members = relationship("PartyMember", back_populates="party", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="party", cascade="all, delete-orphan")

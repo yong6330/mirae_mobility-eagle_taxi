@@ -64,8 +64,9 @@ class FareSource:
 
     KAKAO = "kakao_mobility"  # Kakao Mobility Directions API 응답 기반 (명세 v0.4 표기)
     FALLBACK = "fallback"  # API Key 없거나 호출 실패 시 0원 처리
+    ADMIN_OVERRIDE = "admin_override"  # 관리자 수동 보정 (ADMIN-025)
 
-    ALL: tuple[str, ...] = (KAKAO, FALLBACK)
+    ALL: tuple[str, ...] = (KAKAO, FALLBACK, ADMIN_OVERRIDE)
 
 
-FareSourceType = Literal["kakao_mobility", "fallback"]
+FareSourceType = Literal["kakao_mobility", "fallback", "admin_override"]

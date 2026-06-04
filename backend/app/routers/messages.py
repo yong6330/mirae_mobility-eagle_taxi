@@ -55,7 +55,7 @@ def list_messages(
 
     stmt = (
         select(Message)
-        .where(Message.party_id == party_id)
+        .where(Message.party_id == party_id, Message.is_hidden.is_(False))
         .options(selectinload(Message.user))
         .order_by(Message.created_at.asc(), Message.id.asc())
     )
