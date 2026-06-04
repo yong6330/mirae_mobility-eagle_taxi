@@ -18,7 +18,7 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
-from app.constants import Gender, GenderRule, PartyStatus, UserRole
+from app.constants import FareSource, Gender, GenderRule, PartyStatus, UserRole
 from app.database import get_db
 from app.deps import require_admin, require_master_admin
 from app.errors import AppError, ErrorCode
@@ -26,8 +26,15 @@ from app.models import AdminAction, Message, Party, PartyMember, User
 from app.schemas.admin import (
     AdminActionItem,
     AdminActionsResponse,
+    AdminFareOverride,
+    AdminFareRecalculate,
     AdminMemberAdd,
     AdminMemberRemove,
+    AdminMessageHide,
+    AdminMessageHideResponse,
+    AdminNoticeCreate,
+    AdminNoticeMessageOut,
+    AdminNoticeResponse,
     AdminPasswordReset,
     AdminPasswordResetResponse,
     AdminPartiesResponse,
@@ -54,6 +61,8 @@ from app.schemas.admin import (
     AdminUserDetailResponse,
     AdminUserItem,
     AdminUserMutationResponse,
+    AdminUserPartiesResponse,
+    AdminUserPartyItem,
     AdminUserRoleUpdate,
     AdminUserUpdate,
     AdminUsersResponse,
@@ -1279,3 +1288,227 @@ def admin_remove_party_member(
     action_id = action.id
     db.commit()
     return _party_detail_response(db, party_id, action_id)
+
+
+# ── ADMIN-017: GET /api/admin/users/{user_id}/parties ─────────
+
+
+@router.get("/users/{user_id}/parties", response_model=AdminUserPartiesResponse)
+def admin_user_parties(
+    user_id: int,
+    role: str = Query(default="all"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 사용자 파티 이력 조회 — ADMIN-017."""
+    _load_user_for_admin(db, user_id)
+
+    created_ids = set(
+        db.execute(
+            select(Party.id).where(Party.creator_id == user_id, Party.is_deleted.is_(False))
+        ).scalars().all()
+    )
+    joined_ids = set(
+        db.execute(
+            select(PartyMember.party_id)
+            .join(Party, PartyMember.party_id == Party.id)
+            .where(PartyMember.user_id == user_id, Party.is_deleted.is_(False))
+        ).scalars().all()
+    )
+    if role == "created":
+        ids = created_ids
+    elif role == "joined":
+        ids = joined_ids - created_ids
+    else:
+        ids = created_ids | joined_ids
+
+    if not ids:
+        return AdminUserPartiesResponse(items=[], total=0, page=page, limit=limit)
+
+    stmt = (
+        select(Party)
+        .where(Party.id.in_(ids))
+        .options(selectinload(Party.members))
+        .order_by(desc(Party.created_at), desc(Party.id))
+    )
+    if status_filter:
+        stmt = stmt.where(Party.status == status_filter)
+    parties = db.execute(stmt).scalars().all()
+
+    items_all = [
+        AdminUserPartyItem(
+            party_id=p.id,
+            relation="created" if p.id in created_ids else "joined",
+            status=effective_status(p),
+            start_place=p.start_place,
+            end_place=p.end_place,
+            departure_time=p.departure_time,
+            current_members=len(p.members),
+            max_members=p.max_members,
+        )
+        for p in parties
+    ]
+    total = len(items_all)
+    start = (page - 1) * limit
+    return AdminUserPartiesResponse(
+        items=items_all[start : start + limit], total=total, page=page, limit=limit
+    )
+
+
+# ── ADMIN-024: POST /api/admin/parties/{party_id}/fare/recalculate ──
+
+
+@router.post(
+    "/parties/{party_id}/fare/recalculate", response_model=AdminPartyMutationResponse
+)
+def admin_recalculate_fare(
+    party_id: int,
+    payload: AdminFareRecalculate,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 요금 재산정 — ADMIN-024. (Kakao 실패 시 fare 표준 500/502)"""
+    _require_note(payload.admin_note)
+    party = _load_party_for_admin(db, party_id)
+    before = f"estimated_fare={party.estimated_fare}, source={party.fare_source}"
+    fare = estimate_fare(party.start_lat, party.start_lng, party.end_lat, party.end_lng)
+    party.estimated_fare = fare.estimated_fare
+    party.toll_fare = fare.toll_fare
+    party.distance_meters = fare.distance_meters
+    party.duration_seconds = fare.duration_seconds
+    party.fare_source = fare.fare_source
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_FARE_RECALCULATE,
+        target_type=AdminTargetType.FARE,
+        target_id=party_id,
+        before_value=before,
+        after_value=f"estimated_fare={fare.estimated_fare}, source={fare.fare_source}",
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return _party_detail_response(db, party_id, action_id)
+
+
+# ── ADMIN-025: PATCH /api/admin/parties/{party_id}/fare ───────
+
+
+@router.patch("/parties/{party_id}/fare", response_model=AdminPartyMutationResponse)
+def admin_override_fare(
+    party_id: int,
+    payload: AdminFareOverride,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 요금 수동 보정 — ADMIN-025. fare_source=admin_override."""
+    _require_note(payload.admin_note)
+    party = _load_party_for_admin(db, party_id)
+    before = f"estimated_fare={party.estimated_fare}, source={party.fare_source}"
+    party.estimated_fare = payload.estimated_fare
+    party.toll_fare = payload.toll_fare
+    party.distance_meters = payload.distance_meters
+    party.duration_seconds = max(payload.duration_seconds, 60)  # 최소 60초
+    party.fare_source = FareSource.ADMIN_OVERRIDE
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_FARE_OVERRIDE,
+        target_type=AdminTargetType.FARE,
+        target_id=party_id,
+        before_value=before,
+        after_value=f"estimated_fare={payload.estimated_fare}, source=admin_override",
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return _party_detail_response(db, party_id, action_id)
+
+
+# ── ADMIN-026: DELETE /api/admin/messages/{message_id} ────────
+
+
+@router.delete("/messages/{message_id}", response_model=AdminMessageHideResponse)
+def admin_hide_message(
+    message_id: int,
+    payload: AdminMessageHide = AdminMessageHide(),
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 메시지 숨김 — ADMIN-026. 물리 삭제 X, is_hidden 처리."""
+    _require_note(payload.admin_note)
+    msg = db.get(Message, message_id)
+    if msg is None:
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 메시지입니다.", ErrorCode.MESSAGE_NOT_FOUND
+        )
+    if msg.is_hidden:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "이미 숨김 처리된 메시지입니다.", ErrorCode.MESSAGE_ALREADY_HIDDEN
+        )
+    msg.is_hidden = True
+    msg.hidden_at = now_kst_naive()
+    msg.hidden_by_admin_id = current_admin.id
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.MESSAGE_HIDE,
+        target_type=AdminTargetType.MESSAGE,
+        target_id=message_id,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return AdminMessageHideResponse(hidden=True, admin_action_id=action_id)
+
+
+# ── ADMIN-027: POST /api/admin/parties/{party_id}/messages/notice ──
+
+
+@router.post(
+    "/parties/{party_id}/messages/notice",
+    response_model=AdminNoticeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def admin_create_notice(
+    party_id: int,
+    payload: AdminNoticeCreate,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 공지 메시지 생성 — ADMIN-027. is_admin_notice=True."""
+    _require_note(payload.admin_note)
+    party = _load_party_for_admin(db, party_id)
+    msg = Message(
+        party_id=party.id,
+        user_id=current_admin.id,
+        content=payload.content,
+        is_admin_notice=True,
+    )
+    db.add(msg)
+    db.flush()
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.ADMIN_NOTICE_CREATE,
+        target_type=AdminTargetType.MESSAGE,
+        target_id=msg.id,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    db.refresh(msg)
+    return AdminNoticeResponse(
+        message=AdminNoticeMessageOut(
+            id=msg.id,
+            party_id=msg.party_id,
+            content=msg.content,
+            is_admin_notice=msg.is_admin_notice,
+            created_at=msg.created_at,
+        ),
+        admin_action_id=action_id,
+    )

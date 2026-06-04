@@ -417,3 +417,84 @@ class AdminPartyDeleteResponse(BaseModel):
 
     deleted: bool
     admin_action_id: int
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-017 / 024 / 025 / 026 / 027 (P1)
+# ──────────────────────────────────────────────────────────────
+
+
+class AdminUserPartyItem(BaseModel):
+    """ADMIN-017 응답 항목."""
+
+    party_id: int
+    relation: str  # created / joined
+    status: PartyStatusType
+    start_place: str
+    end_place: str
+    departure_time: datetime
+    current_members: int
+    max_members: int
+
+
+class AdminUserPartiesResponse(BaseModel):
+    """ADMIN-017 응답."""
+
+    items: list[AdminUserPartyItem]
+    total: int
+    page: int
+    limit: int
+
+
+class AdminFareRecalculate(BaseModel):
+    """ADMIN-024 요청 Body."""
+
+    admin_note: str | None = None
+
+
+class AdminFareOverride(BaseModel):
+    """ADMIN-025 요청 Body."""
+
+    estimated_fare: int = Field(ge=0)
+    toll_fare: int = Field(default=0, ge=0)
+    distance_meters: int = Field(ge=0)
+    duration_seconds: int = Field(ge=0)
+    fare_source: str = "admin_override"
+    admin_note: str | None = None
+
+
+class AdminMessageHide(BaseModel):
+    """ADMIN-026 요청 Body."""
+
+    admin_note: str | None = None
+
+
+class AdminMessageHideResponse(BaseModel):
+    """ADMIN-026 응답."""
+
+    hidden: bool
+    admin_action_id: int
+
+
+class AdminNoticeCreate(BaseModel):
+    """ADMIN-027 요청 Body."""
+
+    content: str = Field(min_length=1, max_length=1000)
+    admin_note: str | None = None
+
+
+class AdminNoticeMessageOut(BaseModel):
+    """ADMIN-027 응답의 message 객체."""
+
+    id: int
+    party_id: int
+    content: str
+    is_admin_notice: bool
+    created_at: datetime
+
+
+class AdminNoticeResponse(BaseModel):
+    """ADMIN-027 응답."""
+
+    message: AdminNoticeMessageOut
+    admin_action_id: int
