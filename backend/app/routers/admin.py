@@ -18,7 +18,7 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
-from app.constants import PartyStatus, UserRole
+from app.constants import Gender, GenderRule, PartyStatus, UserRole
 from app.database import get_db
 from app.deps import require_admin, require_master_admin
 from app.errors import AppError, ErrorCode
@@ -26,9 +26,16 @@ from app.models import AdminAction, Message, Party, PartyMember, User
 from app.schemas.admin import (
     AdminActionItem,
     AdminActionsResponse,
+    AdminMemberAdd,
+    AdminMemberRemove,
     AdminPasswordReset,
     AdminPasswordResetResponse,
     AdminPartiesResponse,
+    AdminPartyCreate,
+    AdminPartyDelete,
+    AdminPartyDeleteResponse,
+    AdminPartyMutationResponse,
+    AdminPartyUpdate,
     AdminPartyDetailBody,
     AdminPartyDetailResponse,
     AdminPartyItem,
@@ -53,9 +60,9 @@ from app.schemas.admin import (
 )
 from app.security import hash_password
 from app.services.admin_action import AdminActionType, AdminTargetType, log_admin_action
-from app.services.fare import per_person_fare
-from app.services.party import effective_status
-from app.utils.time import KST, now_kst_naive
+from app.services.fare import estimate_fare, per_person_fare
+from app.services.party import effective_status, to_detail
+from app.utils.time import KST, now_kst_naive, to_kst_naive
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -96,9 +103,8 @@ def _load_party_for_admin(db: Session, party_id: int) -> Party:
     )
     party = db.execute(stmt).scalar_one_or_none()
     if party is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지 않는 파티입니다.",
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 파티입니다.", ErrorCode.PARTY_NOT_FOUND
         )
     return party
 
@@ -274,8 +280,10 @@ def list_parties(
 
 
 # ──────────────────────────────────────────────────────────────
-# ADMIN-005: PATCH /api/admin/parties/{party_id}/status
+# ADMIN-005 / ADMIN-021: PATCH /api/admin/parties/{party_id}/status
 # ──────────────────────────────────────────────────────────────
+
+_RECOVERY_STATUSES = (PartyStatus.RECRUITING, PartyStatus.MATCHED)
 
 
 @router.patch("/parties/{party_id}/status", response_model=AdminPartyItem)
@@ -285,13 +293,55 @@ def update_party_status(
     current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """파티 상태 변경 — ADMIN-005.
+    """파티 상태 변경 — ADMIN-005 / ADMIN-021(확장).
 
-    payload.status는 PartyStatusType Literal로 이미 검증됨.
-    admin_note는 cancel_reason 컬럼에 기록한다 (별도 컬럼 신설 회피).
-    변경 이력은 admin_actions에 기록한다 (ADMIN-012).
+    명세 요청서 ADMIN-021:
+      · recruiting/matched 복구는 master admin만 허용.
+      · recruiting 복구는 출발 미래 + current < max, matched 복구는 출발 미래 + current == max
+        (master admin은 force=true로 matched 인원 조건 우회 가능).
+      · 삭제된 파티는 복구 불가.
     """
     party = _load_party_for_admin(db, party_id)
+
+    if payload.status in _RECOVERY_STATUSES:
+        # 복구는 master admin 전용
+        if not current_admin.master_admin:
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                "recruiting/matched 복구는 마스터 관리자만 가능합니다.",
+                ErrorCode.MASTER_ADMIN_REQUIRED,
+            )
+        if party.is_deleted:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "삭제된 파티는 복구할 수 없습니다.",
+                ErrorCode.ADMIN_PARTY_STATUS_TRANSITION_INVALID,
+            )
+        current_members = len(party.members)
+        future = to_kst_naive(party.departure_time) > now_kst_naive()
+        if not future:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "출발 시간이 지난 파티는 복구할 수 없습니다.",
+                ErrorCode.ADMIN_PARTY_STATUS_TRANSITION_INVALID,
+            )
+        if payload.status == PartyStatus.RECRUITING and current_members >= party.max_members:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "정원이 가득 차 recruiting으로 복구할 수 없습니다.",
+                ErrorCode.ADMIN_PARTY_STATUS_TRANSITION_INVALID,
+            )
+        if (
+            payload.status == PartyStatus.MATCHED
+            and current_members != party.max_members
+            and not payload.force
+        ):
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "정원이 차지 않아 matched로 복구할 수 없습니다. (force 필요)",
+                ErrorCode.ADMIN_PARTY_STATUS_TRANSITION_INVALID,
+            )
+
     before_status = party.status
     party.status = payload.status
     if payload.admin_note:
@@ -873,3 +923,359 @@ def admin_delete_user(
     action_id = action.id
     db.commit()
     return AdminUserDeleteResponse(deleted=True, admin_action_id=action_id)
+
+
+def _load_active_user(db: Session, user_id: int) -> User:
+    """파티 참여 대상 사용자 로드 — 없음 404, 삭제 404, 비활성 409."""
+    u = db.get(User, user_id)
+    if u is None or u.is_deleted:
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 사용자입니다.", ErrorCode.USER_NOT_FOUND
+        )
+    if not u.is_active:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "비활성 사용자입니다.", ErrorCode.AUTH_INACTIVE_USER
+        )
+    return u
+
+
+def _party_detail_response(db: Session, party_id: int, action_id: int) -> AdminPartyMutationResponse:
+    return AdminPartyMutationResponse(
+        party=to_detail(_load_party_for_admin(db, party_id)), admin_action_id=action_id
+    )
+
+
+# ── ADMIN-018: POST /api/admin/parties ────────────────────────
+
+
+@router.post(
+    "/parties", response_model=AdminPartyMutationResponse, status_code=status.HTTP_201_CREATED
+)
+def admin_create_party(
+    payload: AdminPartyCreate,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 생성 — ADMIN-018. creator_user_id를 생성자로 지정."""
+    _require_note(payload.admin_note)
+    if not (2 <= payload.max_members <= 4):
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST, "정원은 2~4명이어야 합니다.", ErrorCode.ADMIN_PARTY_CAPACITY_INVALID
+        )
+    creator = _load_active_user(db, payload.creator_user_id)
+    departure = to_kst_naive(payload.departure_time)
+    if departure <= now_kst_naive() and not payload.force:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST, "출발 시간은 현재 이후여야 합니다.", ErrorCode.ADMIN_PARTY_TIME_INVALID
+        )
+
+    member_ids: list[int] = [creator.id]
+    for uid in payload.initial_member_ids:
+        if uid not in member_ids:
+            member_ids.append(uid)
+    if len(member_ids) > payload.max_members:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "초기 참여자가 정원을 초과합니다.", ErrorCode.ADMIN_PARTY_CAPACITY_EXCEEDED
+        )
+
+    party_gender = creator.gender if payload.gender_rule == GenderRule.SAME_GENDER else None
+    members: list[User] = []
+    for uid in member_ids:
+        u = _load_active_user(db, uid)
+        if (
+            payload.gender_rule == GenderRule.SAME_GENDER
+            and not payload.force
+            and u.gender != party_gender
+        ):
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "성별 조건과 맞지 않는 초기 참여자가 있습니다.",
+                ErrorCode.ADMIN_PARTY_GENDER_RULE_CONFLICT,
+            )
+        members.append(u)
+
+    if (
+        payload.status == PartyStatus.MATCHED
+        and len(members) != payload.max_members
+        and not payload.force
+    ):
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "정원이 차야 matched로 생성할 수 있습니다. (force 필요)",
+            ErrorCode.ADMIN_PARTY_STATUS_TRANSITION_INVALID,
+        )
+
+    fare = estimate_fare(payload.start_lat, payload.start_lng, payload.end_lat, payload.end_lng)
+    party = Party(
+        creator_id=creator.id,
+        start_place=payload.start_place,
+        start_lat=payload.start_lat,
+        start_lng=payload.start_lng,
+        end_place=payload.end_place,
+        end_lat=payload.end_lat,
+        end_lng=payload.end_lng,
+        departure_time=departure,
+        meeting_point=payload.meeting_point,
+        meeting_note=payload.meeting_note,
+        max_members=payload.max_members,
+        gender_rule=payload.gender_rule,
+        party_gender=party_gender,
+        estimated_fare=fare.estimated_fare,
+        toll_fare=fare.toll_fare,
+        distance_meters=fare.distance_meters,
+        duration_seconds=fare.duration_seconds,
+        fare_source=fare.fare_source,
+        status=payload.status,
+    )
+    db.add(party)
+    db.flush()
+    for u in members:
+        db.add(PartyMember(party_id=party.id, user_id=u.id))
+    db.flush()
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_CREATE,
+        target_type=AdminTargetType.PARTY,
+        target_id=party.id,
+        after_value=f"status={payload.status}, members={len(members)}",
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return _party_detail_response(db, party.id, action_id)
+
+
+# ── ADMIN-019: PATCH /api/admin/parties/{party_id} ────────────
+
+
+@router.patch("/parties/{party_id}", response_model=AdminPartyMutationResponse)
+def admin_update_party(
+    party_id: int,
+    payload: AdminPartyUpdate,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 통합 수정 — ADMIN-019. 부분 수정."""
+    _require_note(payload.admin_note)
+    party = _load_party_for_admin(db, party_id)
+    current_members = len(party.members)
+    before = f"status={party.status}, max={party.max_members}"
+
+    if payload.creator_user_id is not None and payload.creator_user_id != party.creator_id:
+        if payload.creator_user_id not in {m.user_id for m in party.members}:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "새 생성자는 현재 파티 참여자여야 합니다.",
+                ErrorCode.ADMIN_PARTY_MEMBER_NOT_FOUND,
+            )
+        party.creator_id = payload.creator_user_id
+
+    for field in (
+        "start_place", "start_lat", "start_lng",
+        "end_place", "end_lat", "end_lng",
+        "meeting_point", "meeting_note",
+    ):
+        val = getattr(payload, field)
+        if val is not None:
+            setattr(party, field, val)
+
+    if payload.departure_time is not None:
+        party.departure_time = to_kst_naive(payload.departure_time)
+
+    if payload.max_members is not None:
+        if not (2 <= payload.max_members <= 4):
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST, "정원은 2~4명이어야 합니다.", ErrorCode.ADMIN_PARTY_CAPACITY_INVALID
+            )
+        if payload.max_members < current_members:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "정원을 현재 인원보다 작게 줄일 수 없습니다.",
+                ErrorCode.ADMIN_PARTY_CAPACITY_EXCEEDED,
+            )
+        party.max_members = payload.max_members
+
+    if payload.gender_rule is not None:
+        if payload.gender_rule == GenderRule.SAME_GENDER:
+            genders = {m.user.gender for m in party.members}
+            if not payload.force and len(genders) > 1:
+                raise AppError(
+                    status.HTTP_409_CONFLICT,
+                    "기존 참여자 성별이 달라 same_gender로 변경할 수 없습니다.",
+                    ErrorCode.ADMIN_PARTY_GENDER_RULE_CONFLICT,
+                )
+            party.gender_rule = GenderRule.SAME_GENDER
+            creator = db.get(User, party.creator_id)
+            party.party_gender = creator.gender if creator else None
+        else:
+            party.gender_rule = GenderRule.ANY
+            party.party_gender = None
+
+    if payload.recalculate_fare:
+        fare = estimate_fare(party.start_lat, party.start_lng, party.end_lat, party.end_lng)
+        party.estimated_fare = fare.estimated_fare
+        party.toll_fare = fare.toll_fare
+        party.distance_meters = fare.distance_meters
+        party.duration_seconds = fare.duration_seconds
+        party.fare_source = fare.fare_source
+
+    after = f"status={party.status}, max={party.max_members}"
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_UPDATE,
+        target_type=AdminTargetType.PARTY,
+        target_id=party_id,
+        before_value=before,
+        after_value=after,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return _party_detail_response(db, party_id, action_id)
+
+
+# ── ADMIN-020: DELETE /api/admin/parties/{party_id} ───────────
+
+
+@router.delete("/parties/{party_id}", response_model=AdminPartyDeleteResponse)
+def admin_delete_party(
+    party_id: int,
+    payload: AdminPartyDelete = AdminPartyDelete(),
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 삭제(soft) — ADMIN-020."""
+    _require_note(payload.admin_note)
+    if payload.delete_mode != "soft":
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            "지원하지 않는 삭제 방식입니다. (soft만 허용)",
+            ErrorCode.ADMIN_INVALID_DELETE_MODE,
+        )
+    party = _load_party_for_admin(db, party_id)
+    party.is_deleted = True
+    party.deleted_at = now_kst_naive()
+    party.deleted_by_admin_id = current_admin.id
+    party.status = PartyStatus.CANCELED
+    party.cancel_reason = payload.admin_note
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_DELETE,
+        target_type=AdminTargetType.PARTY,
+        target_id=party_id,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return AdminPartyDeleteResponse(deleted=True, admin_action_id=action_id)
+
+
+# ── ADMIN-022: POST /api/admin/parties/{party_id}/members ─────
+
+
+@router.post(
+    "/parties/{party_id}/members",
+    response_model=AdminPartyMutationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def admin_add_party_member(
+    party_id: int,
+    payload: AdminMemberAdd,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 참여자 추가 — ADMIN-022."""
+    _require_note(payload.admin_note)
+    party = _load_party_for_admin(db, party_id)
+    user = _load_active_user(db, payload.user_id)
+
+    if any(m.user_id == user.id for m in party.members):
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "이미 참여 중인 사용자입니다.",
+            ErrorCode.ADMIN_PARTY_MEMBER_ALREADY_EXISTS,
+        )
+    if len(party.members) >= party.max_members:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "정원이 가득 찼습니다.", ErrorCode.ADMIN_PARTY_CAPACITY_EXCEEDED
+        )
+    if (
+        party.gender_rule == GenderRule.SAME_GENDER
+        and not payload.force
+        and user.gender != party.party_gender
+    ):
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "성별 조건에 맞지 않습니다.",
+            ErrorCode.ADMIN_PARTY_GENDER_RULE_CONFLICT,
+        )
+
+    db.add(PartyMember(party_id=party.id, user_id=user.id))
+    db.flush()
+    db.refresh(party)
+    if len(party.members) >= party.max_members and party.status == PartyStatus.RECRUITING:
+        party.status = PartyStatus.MATCHED
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_MEMBER_ADD,
+        target_type=AdminTargetType.PARTY_MEMBER,
+        target_id=party.id,
+        after_value=f"user_id={user.id}",
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return _party_detail_response(db, party_id, action_id)
+
+
+# ── ADMIN-023: DELETE /api/admin/parties/{party_id}/members/{user_id} ──
+
+
+@router.delete(
+    "/parties/{party_id}/members/{user_id}", response_model=AdminPartyMutationResponse
+)
+def admin_remove_party_member(
+    party_id: int,
+    user_id: int,
+    payload: AdminMemberRemove = AdminMemberRemove(),
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 파티 참여자 삭제 — ADMIN-023."""
+    _require_note(payload.admin_note)
+    party = _load_party_for_admin(db, party_id)
+    membership = next((m for m in party.members if m.user_id == user_id), None)
+    if membership is None:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "파티 참여자가 아닙니다.",
+            ErrorCode.ADMIN_PARTY_MEMBER_NOT_FOUND,
+        )
+    if party.creator_id == user_id:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "생성자는 제거할 수 없습니다. 먼저 생성자를 변경해주세요.",
+            ErrorCode.ADMIN_PARTY_STATUS_TRANSITION_INVALID,
+        )
+
+    db.delete(membership)
+    db.flush()
+    db.refresh(party)
+    if party.status == PartyStatus.MATCHED and len(party.members) < party.max_members:
+        party.status = PartyStatus.RECRUITING
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.PARTY_MEMBER_REMOVE,
+        target_type=AdminTargetType.PARTY_MEMBER,
+        target_id=party.id,
+        after_value=f"removed user_id={user_id}",
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return _party_detail_response(db, party_id, action_id)

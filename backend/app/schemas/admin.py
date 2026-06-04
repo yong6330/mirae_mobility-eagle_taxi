@@ -11,7 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.constants import GenderType, PartyStatusType, UserRoleType
+from app.constants import GenderRuleType, GenderType, PartyStatusType, UserRoleType
+from app.schemas.party import PartyDetail
 
 
 # ──────────────────────────────────────────────────────────────
@@ -116,9 +117,10 @@ class AdminUsersResponse(BaseModel):
 
 
 class AdminPartyStatusUpdate(BaseModel):
-    """ADMIN-005 요청 Body."""
+    """ADMIN-005 / ADMIN-021 요청 Body. force는 master admin의 matched 인원조건 우회용."""
 
     status: PartyStatusType
+    force: bool = False
     admin_note: str | None = Field(default=None, max_length=500)
 
 
@@ -331,6 +333,87 @@ class AdminPasswordResetResponse(BaseModel):
 
 class AdminUserDeleteResponse(BaseModel):
     """ADMIN-016 응답."""
+
+    deleted: bool
+    admin_action_id: int
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-018~023: 파티 유지보수 (생성/수정/삭제/참여자)
+# ──────────────────────────────────────────────────────────────
+
+
+class AdminPartyCreate(BaseModel):
+    """ADMIN-018 요청 Body."""
+
+    creator_user_id: int
+    start_place: str
+    start_lat: float
+    start_lng: float
+    end_place: str
+    end_lat: float
+    end_lng: float
+    departure_time: datetime
+    meeting_point: str | None = None
+    meeting_note: str | None = None
+    max_members: int = 4
+    gender_rule: GenderRuleType = "any"
+    initial_member_ids: list[int] = Field(default_factory=list)
+    status: Literal["recruiting", "matched"] = "recruiting"
+    force: bool = False
+    admin_note: str | None = None
+
+
+class AdminPartyUpdate(BaseModel):
+    """ADMIN-019 요청 Body — 부분 수정."""
+
+    creator_user_id: int | None = None
+    start_place: str | None = None
+    start_lat: float | None = None
+    start_lng: float | None = None
+    end_place: str | None = None
+    end_lat: float | None = None
+    end_lng: float | None = None
+    departure_time: datetime | None = None
+    meeting_point: str | None = None
+    meeting_note: str | None = None
+    max_members: int | None = None
+    gender_rule: GenderRuleType | None = None
+    recalculate_fare: bool = False
+    force: bool = False
+    admin_note: str | None = None
+
+
+class AdminPartyDelete(BaseModel):
+    """ADMIN-020 요청 Body."""
+
+    delete_mode: str = "soft"
+    admin_note: str | None = None
+
+
+class AdminMemberAdd(BaseModel):
+    """ADMIN-022 요청 Body."""
+
+    user_id: int
+    force: bool = False
+    admin_note: str | None = None
+
+
+class AdminMemberRemove(BaseModel):
+    """ADMIN-023 요청 Body."""
+
+    admin_note: str | None = None
+
+
+class AdminPartyMutationResponse(BaseModel):
+    """ADMIN-018/019/022/023 응답 — 변경된 파티 상세 + 감사로그 ID."""
+
+    party: PartyDetail
+    admin_action_id: int
+
+
+class AdminPartyDeleteResponse(BaseModel):
+    """ADMIN-020 응답."""
 
     deleted: bool
     admin_action_id: int
