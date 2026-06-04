@@ -35,4 +35,5 @@ def get_fare_estimate(
         distance_meters=result.distance_meters,
         duration_seconds=result.duration_seconds,
         fare_source=result.fare_source,
+        fare_warning=result.fare_warning,
     )

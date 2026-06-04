@@ -110,6 +110,8 @@ class FareEstimateOut(BaseModel):
     distance_meters: int
     duration_seconds: int
     fare_source: str
+    # 명세 §10-3: fallback 응답에만 경고 문구가 실린다. 정상 산정 시 null.
+    fare_warning: str | None = None
 
 
 class MyPartiesResponse(BaseModel):
