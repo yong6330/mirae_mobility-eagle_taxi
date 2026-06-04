@@ -26,6 +26,8 @@ from app.models import AdminAction, Message, Party, PartyMember, User
 from app.schemas.admin import (
     AdminActionItem,
     AdminActionsResponse,
+    AdminPasswordReset,
+    AdminPasswordResetResponse,
     AdminPartiesResponse,
     AdminPartyDetailBody,
     AdminPartyDetailResponse,
@@ -38,16 +40,22 @@ from app.schemas.admin import (
     AdminStats,
     AdminSystemStatus,
     AdminUserActiveUpdate,
+    AdminUserCreate,
+    AdminUserDelete,
+    AdminUserDeleteResponse,
     AdminUserDetail,
     AdminUserDetailResponse,
     AdminUserItem,
+    AdminUserMutationResponse,
     AdminUserRoleUpdate,
+    AdminUserUpdate,
     AdminUsersResponse,
 )
+from app.security import hash_password
 from app.services.admin_action import AdminActionType, AdminTargetType, log_admin_action
 from app.services.fare import per_person_fare
 from app.services.party import effective_status
-from app.utils.time import KST
+from app.utils.time import KST, now_kst_naive
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -597,3 +605,271 @@ def get_admin_actions(
         for a in rows
     ]
     return AdminActionsResponse(items=items, total=total, page=page, limit=limit)
+
+
+# ══════════════════════════════════════════════════════════════
+# ADMIN-013~027: 관리자 유지보수 API (요청서 2026-06-04)
+# 별도 표기 없으면 master admin 전용(require_master_admin).
+# ══════════════════════════════════════════════════════════════
+
+
+def _require_note(note: str | None) -> str:
+    """admin_note 필수 검증 — 누락 시 400 ADMIN_NOTE_REQUIRED."""
+    if not note or not note.strip():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            "admin_note는 필수입니다.",
+            ErrorCode.ADMIN_NOTE_REQUIRED,
+        )
+    return note
+
+
+_ACTIVE_PARTY_STATUSES = (PartyStatus.RECRUITING, PartyStatus.MATCHED)
+
+
+def _user_has_active_parties(db: Session, user_id: int) -> bool:
+    """사용자가 recruiting/matched 상태의 (삭제 안 된) 파티를 생성했거나 참여 중인지."""
+    created = db.execute(
+        select(func.count(Party.id)).where(
+            Party.creator_id == user_id,
+            Party.status.in_(_ACTIVE_PARTY_STATUSES),
+            Party.is_deleted.is_(False),
+        )
+    ).scalar_one()
+    if created > 0:
+        return True
+    joined = db.execute(
+        select(func.count(PartyMember.id))
+        .join(Party, PartyMember.party_id == Party.id)
+        .where(
+            PartyMember.user_id == user_id,
+            Party.status.in_(_ACTIVE_PARTY_STATUSES),
+            Party.is_deleted.is_(False),
+        )
+    ).scalar_one()
+    return joined > 0
+
+
+# ── ADMIN-013: POST /api/admin/users ──────────────────────────
+
+
+@router.post(
+    "/users", response_model=AdminUserMutationResponse, status_code=status.HTTP_201_CREATED
+)
+def admin_create_user(
+    payload: AdminUserCreate,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 사용자 생성 — ADMIN-013."""
+    _require_note(payload.admin_note)
+    email = payload.email.lower()
+    if db.execute(select(User).where(User.email == email)).scalar_one_or_none() is not None:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "이미 가입된 이메일입니다.", ErrorCode.AUTH_EMAIL_ALREADY_EXISTS
+        )
+
+    user = User(
+        email=email,
+        password_hash=hash_password(payload.password),
+        name=payload.name,
+        gender=payload.gender,
+        role=payload.role,
+        is_active=payload.is_active,
+    )
+    db.add(user)
+    db.flush()
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.USER_CREATE,
+        target_type=AdminTargetType.USER,
+        target_id=user.id,
+        after_value=f"role={payload.role}, is_active={payload.is_active}",
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    db.refresh(user)
+    return AdminUserMutationResponse(
+        user=AdminUserItem.model_validate(user), admin_action_id=action_id
+    )
+
+
+# ── ADMIN-014: PATCH /api/admin/users/{user_id} ───────────────
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserMutationResponse)
+def admin_update_user(
+    user_id: int,
+    payload: AdminUserUpdate,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 사용자 통합 수정 — ADMIN-014. 부분 수정."""
+    _require_note(payload.admin_note)
+    user = _load_user_for_admin(db, user_id)
+    if user.master_admin:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "마스터 관리자는 수정할 수 없습니다.", ErrorCode.MASTER_ADMIN_PROTECTED
+        )
+
+    before = f"role={user.role}, is_active={user.is_active}"
+
+    if payload.email is not None:
+        new_email = payload.email.lower()
+        if new_email != user.email:
+            exists = db.execute(
+                select(User).where(User.email == new_email)
+            ).scalar_one_or_none()
+            if exists is not None:
+                raise AppError(
+                    status.HTTP_409_CONFLICT,
+                    "이미 가입된 이메일입니다.",
+                    ErrorCode.AUTH_EMAIL_ALREADY_EXISTS,
+                )
+            user.email = new_email
+    if payload.name is not None:
+        user.name = payload.name
+    if payload.gender is not None:
+        user.gender = payload.gender
+    if payload.role is not None and payload.role != user.role:
+        if (
+            user.role == UserRole.ADMIN
+            and payload.role == UserRole.USER
+            and user.is_active
+            and _count_active_admins(db) <= 1
+        ):
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "마지막 활성 관리자는 강등할 수 없습니다.",
+                ErrorCode.LAST_ADMIN_CANNOT_BE_DEMOTED,
+            )
+        user.role = payload.role
+    if payload.is_active is not None and payload.is_active != user.is_active:
+        if (
+            payload.is_active is False
+            and user.role == UserRole.ADMIN
+            and user.is_active
+            and _count_active_admins(db) <= 1
+        ):
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                "마지막 활성 관리자는 비활성화할 수 없습니다.",
+                ErrorCode.LAST_ADMIN_CANNOT_BE_DEACTIVATED,
+            )
+        user.is_active = payload.is_active
+
+    after = f"role={user.role}, is_active={user.is_active}"
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.USER_UPDATE,
+        target_type=AdminTargetType.USER,
+        target_id=user_id,
+        before_value=before,
+        after_value=after,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    db.refresh(user)
+    return AdminUserMutationResponse(
+        user=AdminUserItem.model_validate(user), admin_action_id=action_id
+    )
+
+
+# ── ADMIN-015: POST /api/admin/users/{user_id}/password-reset ──
+
+
+@router.post(
+    "/users/{user_id}/password-reset", response_model=AdminPasswordResetResponse
+)
+def admin_reset_user_password(
+    user_id: int,
+    payload: AdminPasswordReset,
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 사용자 비밀번호 초기화 — ADMIN-015."""
+    _require_note(payload.admin_note)
+    user = _load_user_for_admin(db, user_id)
+    if user.master_admin:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "마스터 관리자는 변경할 수 없습니다.", ErrorCode.MASTER_ADMIN_PROTECTED
+        )
+    if len(payload.new_password) < 8:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            "임시 비밀번호는 8자 이상이어야 합니다.",
+            ErrorCode.ADMIN_PASSWORD_POLICY_FAILED,
+        )
+
+    user.password_hash = hash_password(payload.new_password)
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.USER_PASSWORD_RESET,
+        target_type=AdminTargetType.USER,
+        target_id=user_id,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    # MVP: 토큰 무효화 저장소가 없어 force_logout은 적용하지 않는다.
+    return AdminPasswordResetResponse(
+        password_reset=True, force_logout_applied=False, admin_action_id=action_id
+    )
+
+
+# ── ADMIN-016: DELETE /api/admin/users/{user_id} ──────────────
+
+
+@router.delete("/users/{user_id}", response_model=AdminUserDeleteResponse)
+def admin_delete_user(
+    user_id: int,
+    payload: AdminUserDelete = AdminUserDelete(),
+    current_admin: User = Depends(require_master_admin),
+    db: Session = Depends(get_db),
+):
+    """관리자 사용자 삭제(soft) — ADMIN-016."""
+    _require_note(payload.admin_note)
+    if payload.delete_mode != "soft":
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            "지원하지 않는 삭제 방식입니다. (soft만 허용)",
+            ErrorCode.ADMIN_INVALID_DELETE_MODE,
+        )
+    user = _load_user_for_admin(db, user_id)
+    if user.master_admin:
+        raise AppError(
+            status.HTTP_409_CONFLICT, "마스터 관리자는 삭제할 수 없습니다.", ErrorCode.MASTER_ADMIN_PROTECTED
+        )
+    if user.role == UserRole.ADMIN and user.is_active and _count_active_admins(db) <= 1:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "마지막 활성 관리자는 삭제할 수 없습니다.",
+            ErrorCode.LAST_ADMIN_CANNOT_BE_DEACTIVATED,
+        )
+    if _user_has_active_parties(db, user_id):
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "활성 파티가 있어 삭제할 수 없습니다. 먼저 파티를 정리해주세요.",
+            ErrorCode.ADMIN_USER_HAS_ACTIVE_PARTIES,
+        )
+
+    user.is_deleted = True
+    user.is_active = False
+    user.deleted_at = now_kst_naive()
+    user.deleted_by_admin_id = current_admin.id
+    action = log_admin_action(
+        db,
+        actor_admin_id=current_admin.id,
+        action_type=AdminActionType.USER_DELETE,
+        target_type=AdminTargetType.USER,
+        target_id=user_id,
+        note=payload.admin_note,
+    )
+    action_id = action.id
+    db.commit()
+    return AdminUserDeleteResponse(deleted=True, admin_action_id=action_id)

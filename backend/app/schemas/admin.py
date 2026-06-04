@@ -96,6 +96,8 @@ class AdminUserItem(BaseModel):
     role: UserRoleType
     is_active: bool
     master_admin: bool = False
+    is_deleted: bool = False
+    deleted_at: datetime | None = None
     created_at: datetime
 
 
@@ -267,3 +269,68 @@ class AdminActionsResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+# ──────────────────────────────────────────────────────────────
+# ADMIN-013~016: 사용자 유지보수 (생성/수정/비번초기화/삭제)
+# ──────────────────────────────────────────────────────────────
+
+
+class AdminUserCreate(BaseModel):
+    """ADMIN-013 요청 Body."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=64)
+    name: str = Field(min_length=1, max_length=50)
+    gender: Literal["male", "female"]  # v0.4 저장값은 male/female만
+    role: UserRoleType = "user"
+    is_active: bool = True
+    admin_note: str | None = None
+
+
+class AdminUserUpdate(BaseModel):
+    """ADMIN-014 요청 Body — 부분 수정. 보낸 필드만 변경."""
+
+    email: EmailStr | None = None
+    name: str | None = Field(default=None, max_length=50)
+    gender: Literal["male", "female"] | None = None
+    role: UserRoleType | None = None
+    is_active: bool | None = None
+    admin_note: str | None = None
+
+
+class AdminPasswordReset(BaseModel):
+    """ADMIN-015 요청 Body."""
+
+    new_password: str
+    force_logout: bool = False
+    admin_note: str | None = None
+
+
+class AdminUserDelete(BaseModel):
+    """ADMIN-016 요청 Body."""
+
+    delete_mode: str = "soft"
+    admin_note: str | None = None
+
+
+class AdminUserMutationResponse(BaseModel):
+    """ADMIN-013/014 응답 — 변경된 사용자 + 감사로그 ID."""
+
+    user: AdminUserItem
+    admin_action_id: int
+
+
+class AdminPasswordResetResponse(BaseModel):
+    """ADMIN-015 응답."""
+
+    password_reset: bool
+    force_logout_applied: bool
+    admin_action_id: int
+
+
+class AdminUserDeleteResponse(BaseModel):
+    """ADMIN-016 응답."""
+
+    deleted: bool
+    admin_action_id: int
