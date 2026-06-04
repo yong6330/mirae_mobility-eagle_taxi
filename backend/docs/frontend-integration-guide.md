@@ -280,10 +280,46 @@ created_at: datetime
 - 파티 상세의 생성자는 `creator_name` 문자열 (이전 `creator` 객체 폐기).
 - `fare_source` 값은 `"kakao_mobility"` (이전 `"kakao"` 폐기).
 
-아래는 임의 확정하지 않고 팀 회의 결정 후 갱신한다. 현재는 동작하는 코드 기준값을 적어둔 것이다.
-- 비즈니스 예외 HTTP 코드: 코드는 참여/취소 실패를 대부분 `400 + detail`로 내려준다. 명세 v0.4(PARTY-006/007/008)는 중복·정원·상태 충돌 `409`, 성별 불일치 `403`을 규정 → "에러 코드 세분화" 회의 후 통일. 프론트는 당분간 `detail` 문자열로 분기.
+아래는 임의 확정하지 않고 팀 회의 결정 후 갱신한다.
 - 환경변수 이름: 코드 `.env`는 `KAKAO_REST_API_KEY`, `JWT_EXPIRES_MINUTES`. 명세 §23-2/README는 `KAKAO_MOBILITY_REST_API_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`. 회의 후 통일.
-- 검증 에러의 `errors` 배열 포함 여부/세분화 수준.
-- 외부 API(Kakao) 실패 시 정책(현재는 fallback 0원 처리).
+- 파일명 컨벤션(party.py vs parties.py 등 repo 잔재 정리).
+
+---
+
+## 10. v0.4 최종 정합 변경 (2026-06-04, 프론트 반영 필요)
+
+명세 v0.4 전체 준수 작업으로 계약이 다음과 같이 바뀌었다 (feature/backend).
+
+### 10-1. 공통 에러 응답 형식 (전 엔드포인트)
+이제 모든 에러가 `error_code`를 함께 내려준다. 프론트는 `error_code`로 분기 가능.
+```json
+{ "detail": "이미 참여한 파티입니다.", "error_code": "PARTY_ALREADY_JOINED" }
+```
+주요 코드: `AUTH_REQUIRED`, `AUTH_INVALID_CREDENTIALS`, `AUTH_INACTIVE_USER`,
+`PARTY_NOT_FOUND`, `PARTY_ALREADY_JOINED`, `PARTY_FULL`, `PARTY_NOT_RECRUITING`,
+`PARTY_TIME_OVERLAP`, `PARTY_GENDER_RULE_MISMATCH`, `PARTY_CREATOR_CANNOT_LEAVE`,
+`FARE_CONFIG_MISSING`, `ADMIN_REQUIRED`, `MASTER_ADMIN_REQUIRED`, `MASTER_ADMIN_PROTECTED`.
+
+### 10-2. 파티 참여/취소 상태코드 변경 (중요)
+- 중복 참여 / 만석 / 시간대 겹침 / 모집중 아님 → **409** (이전 400)
+- 성별 매칭 조건 불일치 → **403** (이전 400)
+- 생성자 leave / 미참여자 leave / 종료된 파티 취소 → **409**
+- 프론트는 더 이상 "400이면 입력 오류"로 단정하지 말 것. `error_code`로 분기 권장.
+
+### 10-3. 요금 산정 (FARE-001 / 파티 생성)
+- Kakao Key 미설정 → **500 `FARE_CONFIG_MISSING`**
+- Kakao 호출/경로 실패 → **502 `FARE_UPSTREAM_FAILED` / `FARE_ROUTE_NOT_FOUND`**
+- 서버가 `ALLOW_FARE_FALLBACK=true`면 위 실패 대신 fallback 응답(요금 0 + `fare_warning`).
+- `FareEstimateOut`에 `fare_warning: string | null` 추가 (정상 산정 시 null).
+
+### 10-4. 사용자 응답에 master_admin 추가
+`me`, 사용자 목록/상세 응답에 `master_admin: boolean` 필드 추가. 관리자 화면에서
+role 변경(ADMIN-006)은 `master_admin === true`인 계정만 호출 가능(아니면 403).
+
+### 10-5. 신규 관리자 엔드포인트
+- `GET /api/admin/system/status` (ADMIN-011) — 서버/DB/Kakao/fallback/서버시간.
+- `GET /api/admin/actions` (ADMIN-012) — 관리자 조작 기록(role/활성/파티상태 변경).
+
+> 6절의 §3(참여 후 버튼) 관련 프론트 수정(`member.id`/`creator_name`)도 함께 반영 필요.
 
 문의는 TL(이가람)에게.
