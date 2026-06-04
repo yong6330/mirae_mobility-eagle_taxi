@@ -58,10 +58,11 @@ def test_join_party_blocked_when_time_conflicts_with_another_party(client):
     r1 = client.post(f"/api/parties/{party1['id']}/join", headers=auth_header(user_token))
     assert r1.status_code == 200
 
-    # 같은 시간대 두 번째 파티 참여 → 차단
+    # 같은 시간대 두 번째 파티 참여 → 차단 (명세 PARTY-006: 409 PARTY_TIME_OVERLAP)
     r2 = client.post(f"/api/parties/{party2['id']}/join", headers=auth_header(user_token))
-    assert r2.status_code == 400
+    assert r2.status_code == 409
     assert "같은 시간대" in r2.json()["detail"]
+    assert r2.json()["error_code"] == "PARTY_TIME_OVERLAP"
 
 
 def test_join_party_allowed_when_time_far_apart(client):
@@ -223,8 +224,9 @@ def test_leave_party_creator_blocked(client):
     ).json()
 
     res = client.delete(f"/api/parties/{party['id']}/leave", headers=auth_header(host_token))
-    assert res.status_code == 400
+    assert res.status_code == 409  # 명세 PARTY-007: 생성자 이탈은 409
     assert "생성자" in res.json()["detail"]
+    assert res.json()["error_code"] == "PARTY_CREATOR_CANNOT_LEAVE"
 
 
 def test_leave_party_not_a_member(client):
@@ -237,8 +239,9 @@ def test_leave_party_not_a_member(client):
     _, other_token = register_and_login(client, "lo@yonsei.ac.kr")
 
     res = client.delete(f"/api/parties/{party['id']}/leave", headers=auth_header(other_token))
-    assert res.status_code == 400
+    assert res.status_code == 409  # 명세 PARTY-007: 미참여자 취소는 409
     assert "참여하지 않은" in res.json()["detail"]
+    assert res.json()["error_code"] == "PARTY_NOT_JOINED"
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -294,5 +297,6 @@ def test_canceled_party_cannot_be_joined(client):
 
     _, other_token = register_and_login(client, "cj@yonsei.ac.kr")
     res = client.post(f"/api/parties/{party['id']}/join", headers=auth_header(other_token))
-    assert res.status_code == 400
-    assert "모집 중인" in res.json()["detail"]
+    assert res.status_code == 409  # 명세 PARTY-006: 취소된 파티 참여는 409
+    assert "취소된 파티" in res.json()["detail"]
+    assert res.json()["error_code"] == "PARTY_NOT_RECRUITING"

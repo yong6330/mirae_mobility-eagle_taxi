@@ -3,7 +3,7 @@
 F-AUTH-004(로그아웃)은 백엔드 API 없이 프론트에서 토큰 삭제로 처리한다.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.config import settings
 from app.constants import UserRole
 from app.database import get_db
 from app.deps import get_current_user
+from app.errors import AppError, ErrorCode
 from app.models import User
 from app.schemas.auth import LoginRequest, LoginResponse, RegisterRequest, UserOut
 from app.security import create_access_token, hash_password, verify_password
@@ -32,9 +33,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     email = payload.email.lower()
 
     if db.execute(select(User).where(User.email == email)).scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="이미 가입된 이메일입니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "이미 가입된 이메일입니다.",
+            ErrorCode.AUTH_EMAIL_ALREADY_EXISTS,
         )
 
     new_user = User(
@@ -63,14 +65,16 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="이메일 또는 비밀번호가 올바르지 않습니다.",
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            "이메일 또는 비밀번호가 올바르지 않습니다.",
+            ErrorCode.AUTH_INVALID_CREDENTIALS,
         )
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="비활성화된 계정입니다. 관리자에게 문의해주세요.",
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            "비활성화된 계정입니다. 관리자에게 문의해주세요.",
+            ErrorCode.AUTH_INACTIVE_USER,
         )
 
     return LoginResponse(

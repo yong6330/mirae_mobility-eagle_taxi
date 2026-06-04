@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.constants import Gender, GenderRule, PartyStatus, PartyStatusType
 from app.database import get_db
 from app.deps import get_current_user
+from app.errors import AppError, ErrorCode
 from app.models import Party, PartyMember, User
 from app.schemas.party import (
     PartyCancelRequest,
@@ -332,37 +333,48 @@ def join_party(
     """파티 참여 — 명세서 v0.4 F-PARTY-004."""
     party = _load_party_with_relations(db, party_id)
     if party is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="존재하지 않는 파티입니다.")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 파티입니다.", ErrorCode.PARTY_NOT_FOUND
+        )
 
-    if effective_status(party) != PartyStatus.RECRUITING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="모집 중인 파티가 아닙니다.",
+    # 명세 PARTY-006: 모집 중이 아닌 상태는 409 + 상태별 안내 문구.
+    current_status = effective_status(party)
+    if current_status != PartyStatus.RECRUITING:
+        _not_recruiting_messages = {
+            PartyStatus.MATCHED: "매칭 완료된 파티에는 참여할 수 없습니다.",
+            PartyStatus.CANCELED: "취소된 파티에는 참여할 수 없습니다.",
+            PartyStatus.EXPIRED: "출발 시간이 지난 파티입니다.",
+            PartyStatus.COMPLETED: "이용 완료된 파티에는 참여할 수 없습니다.",
+        }
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            _not_recruiting_messages.get(current_status, "참여할 수 없는 파티 상태입니다."),
+            ErrorCode.PARTY_NOT_RECRUITING,
         )
 
     if any(member.user_id == current_user.id for member in party.members):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 참여 중인 파티입니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT, "이미 참여한 파티입니다.", ErrorCode.PARTY_ALREADY_JOINED
         )
 
     # v0.4 신규 검증: 이동 시간대 중복 참여 차단
     if _has_time_conflict(db, current_user.id, party.departure_time, exclude_party_id=party.id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="같은 시간대에 이미 참여 중인 파티가 있습니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "같은 시간대에 이미 참여 중인 파티가 있습니다.",
+            ErrorCode.PARTY_TIME_OVERLAP,
         )
 
     if len(party.members) >= party.max_members:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 정원이 가득 찬 파티입니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT, "최대 인원에 도달한 파티입니다.", ErrorCode.PARTY_FULL
         )
 
     if party.gender_rule == GenderRule.SAME_GENDER and current_user.gender != party.party_gender:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="동성 매칭 옵션이 설정된 파티로, 참여 조건에 맞지 않습니다.",
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            "성별 매칭 조건에 맞지 않습니다.",
+            ErrorCode.PARTY_GENDER_RULE_MISMATCH,
         )
 
     db.add(PartyMember(party_id=party.id, user_id=current_user.id))
@@ -388,27 +400,30 @@ def leave_party(
     """
     party = _load_party_with_relations(db, party_id)
     if party is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="존재하지 않는 파티입니다.")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 파티입니다.", ErrorCode.PARTY_NOT_FOUND
+        )
 
     if party.creator_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="생성자는 참여 취소할 수 없습니다. 파티 취소를 이용해주세요.",
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "생성자는 참여 취소 대신 파티 취소를 진행해야 합니다.",
+            ErrorCode.PARTY_CREATOR_CANNOT_LEAVE,
         )
 
     if effective_status(party) in {PartyStatus.CANCELED, PartyStatus.EXPIRED, PartyStatus.COMPLETED}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="더 이상 참여 취소할 수 없는 파티 상태입니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "더 이상 참여 취소할 수 없는 파티 상태입니다.",
+            ErrorCode.PARTY_NOT_RECRUITING,
         )
 
     membership = next(
         (m for m in party.members if m.user_id == current_user.id), None
     )
     if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="참여하지 않은 파티입니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT, "참여하지 않은 파티입니다.", ErrorCode.PARTY_NOT_JOINED
         )
 
     db.delete(membership)
@@ -433,19 +448,23 @@ def cancel_party(
     """파티 취소 (생성자) — 명세서 v0.4 F-PARTY-011."""
     party = _load_party_with_relations(db, party_id)
     if party is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="존재하지 않는 파티입니다.")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND, "존재하지 않는 파티입니다.", ErrorCode.PARTY_NOT_FOUND
+        )
 
     if party.creator_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="파티 생성자만 취소할 수 있습니다.",
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            "파티 생성자만 취소할 수 있습니다.",
+            ErrorCode.FORBIDDEN,
         )
 
     effective = effective_status(party)
     if effective in {PartyStatus.CANCELED, PartyStatus.EXPIRED, PartyStatus.COMPLETED}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 종료된 파티는 취소할 수 없습니다.",
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "이미 종료된 파티는 취소할 수 없습니다.",
+            ErrorCode.PARTY_NOT_CANCELABLE,
         )
 
     party.status = PartyStatus.CANCELED

@@ -1,20 +1,21 @@
 """공통 FastAPI 의존성 — 라우터에서 `Depends(get_current_user)` 형태로 사용."""
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.constants import UserRole
 from app.database import get_db
+from app.errors import AppError, ErrorCode
 from app.models import User
 from app.security import decode_access_token
 
 _bearer = HTTPBearer(auto_error=False)
 
 
-def _unauthorized(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+def _unauthorized(message: str, error_code: str = ErrorCode.AUTH_REQUIRED) -> AppError:
+    return AppError(status.HTTP_401_UNAUTHORIZED, message, error_code)
 
 
 def get_current_user(
@@ -34,16 +35,17 @@ def get_current_user(
     try:
         payload = decode_access_token(credentials.credentials)
     except JWTError as exc:
-        message = "로그인 정보가 만료되었습니다." if "expired" in str(exc).lower() else "유효하지 않은 토큰입니다."
-        raise _unauthorized(message)
+        if "expired" in str(exc).lower():
+            raise _unauthorized("로그인 정보가 만료되었습니다.", ErrorCode.AUTH_TOKEN_EXPIRED)
+        raise _unauthorized("유효하지 않은 토큰입니다.", ErrorCode.AUTH_TOKEN_INVALID)
 
     user_id = payload.get("sub")
     if not user_id:
-        raise _unauthorized("유효하지 않은 토큰입니다.")
+        raise _unauthorized("유효하지 않은 토큰입니다.", ErrorCode.AUTH_TOKEN_INVALID)
 
     user = db.get(User, int(user_id))
     if user is None:
-        raise _unauthorized("유효하지 않은 토큰입니다.")
+        raise _unauthorized("유효하지 않은 토큰입니다.", ErrorCode.AUTH_TOKEN_INVALID)
     return user
 
 
@@ -55,13 +57,11 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
       · 일반 사용자  → 403 "관리자 권한이 필요합니다."
     """
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="비활성화된 사용자입니다.",
+        raise AppError(
+            status.HTTP_403_FORBIDDEN, "비활성화된 사용자입니다.", ErrorCode.AUTH_INACTIVE_USER
         )
     if current_user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="관리자 권한이 필요합니다.",
+        raise AppError(
+            status.HTTP_403_FORBIDDEN, "관리자 권한이 필요합니다.", ErrorCode.ADMIN_REQUIRED
         )
     return current_user

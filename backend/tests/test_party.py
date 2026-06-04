@@ -139,17 +139,20 @@ def test_join_party_success_updates_members_and_per_person_fare(client):
     assert set(body["members"][0].keys()) == {"id", "name", "gender"}
 
 
-def test_join_party_duplicate_returns_400(client):
+def test_join_party_duplicate_returns_409(client):
+    # 명세 PARTY-006: 중복 참여는 409 + error_code.
     _, host_token = register_and_login(client, "h@yonsei.ac.kr")
     party = client.post(
         "/api/parties", json=_sample_party_payload(), headers=auth_header(host_token)
     ).json()
     res = client.post(f"/api/parties/{party['id']}/join", headers=auth_header(host_token))
-    assert res.status_code == 400
+    assert res.status_code == 409
     assert "이미" in res.json()["detail"]
+    assert res.json()["error_code"] == "PARTY_ALREADY_JOINED"
 
 
-def test_join_party_full_returns_400(client):
+def test_join_party_full_returns_409(client):
+    # max=2 파티가 차면 matched로 전환되므로, 추가 참여는 409(PARTY_NOT_RECRUITING)로 차단된다.
     _, host_token = register_and_login(client, "h2@yonsei.ac.kr")
     party = client.post(
         "/api/parties",
@@ -162,10 +165,12 @@ def test_join_party_full_returns_400(client):
 
     _, j2 = register_and_login(client, "j2@yonsei.ac.kr")
     res = client.post(f"/api/parties/{party['id']}/join", headers=auth_header(j2))
-    assert res.status_code == 400
+    assert res.status_code == 409
+    assert res.json()["error_code"] == "PARTY_NOT_RECRUITING"
 
 
-def test_join_party_same_gender_mismatch_returns_400(client):
+def test_join_party_same_gender_mismatch_returns_403(client):
+    # 명세 PARTY-006: 성별 매칭 조건 불일치는 403.
     _, host_token = register_and_login(client, "male@yonsei.ac.kr", gender="male")
     party = client.post(
         "/api/parties",
@@ -174,8 +179,9 @@ def test_join_party_same_gender_mismatch_returns_400(client):
     ).json()
     _, female_token = register_and_login(client, "female@yonsei.ac.kr", gender="female")
     res = client.post(f"/api/parties/{party['id']}/join", headers=auth_header(female_token))
-    assert res.status_code == 400
-    assert "동성 매칭" in res.json()["detail"]
+    assert res.status_code == 403
+    assert "성별 매칭" in res.json()["detail"]
+    assert res.json()["error_code"] == "PARTY_GENDER_RULE_MISMATCH"
 
 
 def test_create_party_requires_auth(client):
