@@ -7,8 +7,9 @@ Swagger UI: http://localhost:8000/docs
 """
 
 from contextlib import asynccontextmanager
+import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -26,6 +27,51 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="독수리 택시 API", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    """통합 런처 접속자 표시용 HTTP 접근 로그.
+
+    Cloudflare Tunnel / Vite proxy / 로컬 접속 환경에서 가능한 IP 후보를 순서대로 확인한다.
+
+    우선순위:
+    1. CF-Connecting-IP      : Cloudflare가 전달하는 원본 접속자 IP
+    2. X-Forwarded-For       : 프록시 체인의 원본 IP 후보
+    3. X-Real-IP             : 일부 프록시가 전달하는 원본 IP
+    4. request.client.host   : FastAPI가 직접 본 클라이언트 IP
+
+    출력 형식:
+        [ACCESS] ip=... method=... path=... status=... elapsed_ms=...
+    """
+    started_at = time.time()
+
+    cf_ip = request.headers.get("cf-connecting-ip")
+    forwarded_for = request.headers.get("x-forwarded-for")
+    real_ip = request.headers.get("x-real-ip")
+
+    client_ip = (
+        cf_ip
+        or (forwarded_for.split(",")[0].strip() if forwarded_for else None)
+        or real_ip
+        or (request.client.host if request.client else "unknown")
+    )
+
+    response = await call_next(request)
+
+    elapsed_ms = int((time.time() - started_at) * 1000)
+
+    print(
+        f"[ACCESS] "
+        f"ip={client_ip} "
+        f"method={request.method} "
+        f"path={request.url.path} "
+        f"status={response.status_code} "
+        f"elapsed_ms={elapsed_ms}"
+    )
+
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,

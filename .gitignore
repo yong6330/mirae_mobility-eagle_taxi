@@ -35,6 +35,7 @@ __pycache__/
 dist/
 build/
 .vite/
+*.app/
 
 # OS / Editor
 .DS_Store
