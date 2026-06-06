@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+.python-version
+
+# IDE
+.idea/
+.vscode/
+
+# Build & Release
+build/
+dist/
+*.app
+*.dmg
+*.pkg
+*.zip
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+
+# Local config & secrets
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.mobileprovision
+eagle_taxi_launcher_config.json
+.eagle_taxi_launcher_config.json

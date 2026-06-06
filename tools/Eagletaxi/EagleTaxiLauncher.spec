@@ -5,7 +5,7 @@ a = Analysis(
     ['eagle_taxi_launcher.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('build_assets', 'dist/assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -32,6 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['build_assets/EagleTaxiLogo.icns'],
 )
 coll = COLLECT(
     exe,
@@ -45,6 +46,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='EagleTaxiLauncher.app',
-    icon=None,
+    icon='build_assets/EagleTaxiLogo.icns',
     bundle_identifier=None,
 )
