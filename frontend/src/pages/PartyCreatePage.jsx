@@ -64,6 +64,11 @@ export default function PartyCreatePage({ navigate }) {
       return null;
     }
 
+    if (!form.departure_time) {
+      if (!silent) setMessage('희망 출발 시간을 입력하면 예상 택시비를 계산할 수 있습니다.');
+      return null;
+    }
+
     setEstimating(true);
     if (!silent) setMessage('');
     try {
@@ -72,10 +77,11 @@ export default function PartyCreatePage({ navigate }) {
         start_lng: form.start_lng,
         end_lat: form.end_lat,
         end_lng: form.end_lng,
+        departure_time: normalizeLocalDateTime(form.departure_time),
       });
       setEstimate(result);
       if (result.fare_source === 'fallback') {
-        setMessage('요금 산정에 실패해 백엔드가 fallback 값으로 응답했습니다. 문서 기준상 이 상태에서는 파티 생성을 진행하지 않습니다.');
+        setMessage('요금 산정에 실패해 기본 안내 금액으로 응답했습니다. 정확한 예상 요금을 계산한 뒤 파티를 생성해 주세요.');
       }
       return result;
     } catch (error) {
@@ -88,13 +94,13 @@ export default function PartyCreatePage({ navigate }) {
   };
 
   useEffect(() => {
-    if (!hasCoordinates) return undefined;
+    if (!hasCoordinates || !form.departure_time) return undefined;
 
     let canceled = false;
     const timer = window.setTimeout(async () => {
       const result = await requestEstimate({ silent: true });
       if (!canceled && result?.fare_source === 'fallback') {
-        setMessage('요금 산정에 실패해 백엔드가 fallback 값으로 응답했습니다. 문서 기준상 이 상태에서는 파티 생성을 진행하지 않습니다.');
+        setMessage('요금 산정에 실패해 기본 안내 금액으로 응답했습니다. 정확한 예상 요금을 계산한 뒤 파티를 생성해 주세요.');
       }
     }, 450);
 
@@ -102,7 +108,7 @@ export default function PartyCreatePage({ navigate }) {
       canceled = true;
       window.clearTimeout(timer);
     };
-  }, [form.end_lat, form.end_lng, form.start_lat, form.start_lng, hasCoordinates]);
+  }, [form.departure_time, form.end_lat, form.end_lng, form.start_lat, form.start_lng, hasCoordinates]);
 
   const handleEstimate = async () => {
     await requestEstimate();
@@ -136,7 +142,7 @@ export default function PartyCreatePage({ navigate }) {
       fare = await requestEstimate({ silent: true });
     }
     if (!fare || fare.fare_source === 'fallback') {
-      setMessage('예상 택시비를 계산하지 못해 파티를 생성할 수 없습니다. 백엔드 Kakao Mobility 설정을 확인해야 합니다.');
+      setMessage('예상 택시비를 계산하지 못해 파티를 생성할 수 없습니다. 지도와 요금 연결 상태를 확인해 주세요.');
       return;
     }
 
@@ -157,7 +163,8 @@ export default function PartyCreatePage({ navigate }) {
         max_members: Number(form.max_members),
         gender_rule: form.gender_rule,
       });
-      navigate(`/parties/${created.id}`);
+      const createdId = created?.id || created?.party?.id || created?.data?.id;
+      navigate(createdId ? `/parties/${createdId}` : '/parties');
     } catch (error) {
       setMessage(error.message || '파티 생성에 실패했습니다.');
     } finally {
@@ -174,10 +181,7 @@ export default function PartyCreatePage({ navigate }) {
         </button>
         <div className="card-title">
           <p className="eyebrow">Create Party</p>
-          <h1>새 택시 파티 생성</h1>
-          <p className="muted">
-            장소명을 검색해 결과를 선택하면 좌표가 자동 저장되고, 선택된 좌표로 예상 택시비를 계산합니다.
-          </p>
+          <h1>파티 생성</h1>
         </div>
 
         <form className="stack-form" onSubmit={handleSubmit}>
@@ -252,10 +256,7 @@ export default function PartyCreatePage({ navigate }) {
         <div className="estimate-summary">
           <MapPin size={24} />
           <div>
-            <h2>예상 택시비 자동 산정</h2>
-            <p className="muted">
-              출발지와 목적지를 선택하면 예상 요금을 자동 계산합니다.
-            </p>
+            <h2>예상 택시비</h2>
           </div>
         </div>
         <div className="metric-list">
@@ -279,10 +280,6 @@ export default function PartyCreatePage({ navigate }) {
             <strong>예상 이동 시간</strong>
             <em>{formatDuration(estimate?.duration_seconds)}</em>
           </span>
-          <span>
-            <strong>요금 출처</strong>
-            <em>{estimate?.fare_source || '계산 전'}</em>
-          </span>
         </div>
         <button className="quiet-button full" type="button" onClick={handleEstimate} disabled={estimating}>
           {estimating ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
@@ -291,8 +288,8 @@ export default function PartyCreatePage({ navigate }) {
         <div className={hasValidEstimate ? 'notice-box' : 'notice-box warning'}>
           {hasValidEstimate ? <CheckCircle2 size={18} /> : <WalletCards size={18} />}
           {hasValidEstimate
-            ? '요금 미리보기 계산이 완료되었습니다. 파티 생성 시 백엔드가 같은 좌표로 다시 계산합니다.'
-            : '문서 기준상 예상 택시비 계산이 실패하면 파티 생성이 중단됩니다.'}
+            ? '요금 미리보기 계산이 완료되었습니다. 파티 생성 시 같은 조건으로 예상 요금을 확인합니다.'
+            : '예상 택시비가 계산되어야 파티를 생성할 수 있습니다.'}
         </div>
       </aside>
     </div>
@@ -309,7 +306,7 @@ function readInitialFormFromQuery() {
     end_place: params.get('end_place') || '',
     end_lat: params.get('end_lat') || '',
     end_lng: params.get('end_lng') || '',
-    departure_time: params.get('departure_time') || '',
+    departure_time: params.get('departure_time') || getDefaultDepartureTime(),
   };
 }
 
@@ -337,6 +334,13 @@ function buildPlaceFromQuery(params, type) {
 function normalizeLocalDateTime(value) {
   if (!value) return value;
   return value.length === 16 ? `${value}:00` : value;
+}
+
+function getDefaultDepartureTime() {
+  const date = new Date(Date.now() + 60 * 60 * 1000);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 16);
 }
 
 function isPastLocalDateTime(value) {

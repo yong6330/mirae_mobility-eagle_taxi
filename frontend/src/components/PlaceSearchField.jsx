@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { CheckCircle2, Loader2, Search } from 'lucide-react';
-import { DEFAULT_MAP_CENTER, getKakaoMapKey, loadKakaoMaps } from '../utils/kakaoMaps';
+import { DEFAULT_MAP_CENTER, getMapKey, loadMapProvider } from '../utils/mapProvider';
 
 export default function PlaceSearchField({ label, onSelect, placeholder, selectedPlace, type }) {
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [notice, setNotice] = useState(getKakaoMapKey() ? '' : 'Kakao Maps JavaScript 키가 필요합니다.');
+  const [notice, setNotice] = useState(getMapKey() ? '' : '장소 검색 설정이 아직 연결되지 않았습니다.');
 
   const searchPlaces = async (event) => {
     event.preventDefault();
@@ -21,13 +21,13 @@ export default function PlaceSearchField({ label, onSelect, placeholder, selecte
     setSearching(true);
     setNotice('');
     try {
-      const kakao = await loadKakaoMaps();
-      if (!kakao.maps?.services?.Places) {
-        throw new Error('Kakao Places 서비스가 초기화되지 않았습니다. JavaScript 키의 Local/Places 서비스 설정을 확인해 주세요.');
+      const maps = await loadMapProvider();
+      if (!maps.maps?.services?.Places) {
+        throw new Error('장소 검색 서비스를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
 
-      const places = new kakao.maps.services.Places();
-      const center = new kakao.maps.LatLng(DEFAULT_MAP_CENTER.lat, DEFAULT_MAP_CENTER.lng);
+      const places = new maps.maps.services.Places();
+      const center = new maps.maps.LatLng(DEFAULT_MAP_CENTER.lat, DEFAULT_MAP_CENTER.lng);
 
       const requestKeywordSearch = (options) =>
         new Promise((resolve) => {
@@ -41,17 +41,17 @@ export default function PlaceSearchField({ label, onSelect, placeholder, selecte
       let response = await requestKeywordSearch({
         location: center,
         radius: 20000,
-        sort: kakao.maps.services.SortBy.ACCURACY,
+        sort: maps.maps.services.SortBy.ACCURACY,
       });
 
-      if (response.status !== kakao.maps.services.Status.OK) {
+      if (response.status !== maps.maps.services.Status.OK) {
         response = await requestKeywordSearch({
-          sort: kakao.maps.services.SortBy.ACCURACY,
+          sort: maps.maps.services.SortBy.ACCURACY,
         });
       }
 
       setSearching(false);
-      if (response.status !== kakao.maps.services.Status.OK) {
+      if (response.status !== maps.maps.services.Status.OK) {
         setResults([]);
         setNotice('검색 결과가 없습니다. 장소명을 조금 더 구체적으로 입력해 주세요.');
         return;

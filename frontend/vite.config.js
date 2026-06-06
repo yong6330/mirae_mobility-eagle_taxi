@@ -16,11 +16,6 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
-      '/dapi.kakao.com': {
-        target: 'https://dapi.kakao.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/dapi\.kakao\.com/, ''),
-      },
     },
   },
 });

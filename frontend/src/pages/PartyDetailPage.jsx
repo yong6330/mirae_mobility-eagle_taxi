@@ -38,11 +38,17 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
   const isMember = useMemo(() => {
     if (!party || !user) return false;
     const currentUserId = getUserId(user);
-    return (party.members || []).some((member) => (
-      sameId(member.user?.id, currentUserId)
+    return (
+      sameId(party.creator_id, currentUserId)
+      || sameId(party.creator?.id, currentUserId)
+      || (party.members || []).some((member) => (
+        sameId(member.user?.id, currentUserId)
       || sameId(member.user_id, currentUserId)
+      || sameId(member.id, currentUserId)
       || Boolean(member.user?.email && user.email && member.user.email === user.email)
-    ));
+      || Boolean(member.email && user.email && member.email === user.email)
+      ))
+    );
   }, [party, user]);
 
   const canJoin = party?.status === 'recruiting' && !isMember;
@@ -54,7 +60,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
     setMessage('');
     try {
       const result = await api.partyDetail(partyId);
-      setParty(result);
+      setParty(normalizeParty(readPartyPayload(result)));
     } catch (error) {
       setParty(null);
       setMessage(error.message || '파티 정보를 불러오지 못했습니다.');
@@ -68,7 +74,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
     setMessage('');
     try {
       const result = await api.joinParty(partyId);
-      setParty(result);
+      setParty(normalizeParty(readPartyPayload(result)));
       setMessage('파티에 참여했습니다.');
     } catch (error) {
       setMessage(error.message || '파티 참여에 실패했습니다.');
@@ -83,7 +89,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
     setMessage('');
     try {
       const result = await api.leaveParty(partyId);
-      setParty(result);
+      setParty(normalizeParty(readPartyPayload(result)));
       setMessage('파티 참여를 취소했습니다.');
     } catch (error) {
       setMessage(error.message || '참여 취소에 실패했습니다.');
@@ -98,7 +104,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
     setMessage('');
     try {
       const result = await api.cancelParty(partyId, { cancel_reason: '생성자 취소' });
-      setParty(result);
+      setParty(normalizeParty(readPartyPayload(result)));
       setMessage('파티가 취소되었습니다.');
     } catch (error) {
       setMessage(error.message || '파티 취소에 실패했습니다.');
@@ -165,7 +171,6 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
                 <span><strong>예상 통행료</strong><em>{formatWon(party.toll_fare)}</em></span>
                 <span><strong>예상 이동 거리</strong><em>{formatDistance(party.distance_meters)}</em></span>
                 <span><strong>예상 이동 시간</strong><em>{formatDuration(party.duration_seconds)}</em></span>
-                <span><strong>요금 출처</strong><em>{party.fare_source || '계산 전'}</em></span>
               </div>
             </article>
           </section>
@@ -185,12 +190,15 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
                 <h2>참여자</h2>
               </div>
               {(party.members || []).length > 0 ? (
-                <div className="metric-list">
-                  {party.members.map((member) => (
-                    <span key={`${party.id}-${member.user?.id}-${member.joined_at}`}>
-                      <strong>{member.user?.name || member.user?.email || '참여자'}</strong>
-                      <em>{formatDateTime(member.joined_at)}</em>
-                    </span>
+                <div className="member-list">
+                  {party.members.map((member, index) => (
+                    <article className="member-card" key={getMemberKey(party.id, member, index)}>
+                      <div>
+                        <strong>{formatMemberName(member)}</strong>
+                        <span>{formatMemberJoinedAt(member)}</span>
+                      </div>
+                      <em>참여 중</em>
+                    </article>
                   ))}
                 </div>
               ) : (
@@ -223,10 +231,10 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
                 <button
                   className="quiet-button"
                   type="button"
-                  onClick={() => setMessage('신고 기능은 현재 MVP 범위에서 안내만 제공하며 저장 API는 호출하지 않습니다.')}
+                  onClick={() => navigate(`/support?kind=report&party_id=${partyId}`)}
                 >
                   <ShieldAlert size={18} />
-                  신고 안내
+                  신고하기
                 </button>
               </div>
               <p className="helper-text">
@@ -236,8 +244,8 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
           </section>
 
           <section className="workspace-card action-row">
-            <span className="notice-box"><MapPin size={18} /> 실제 택시 호출은 MVP 범위에서 제외됩니다.</span>
-            <span className="notice-box"><ShieldAlert size={18} /> 신고와 결제 기능은 안내만 제공합니다.</span>
+            <span className="notice-box"><MapPin size={18} /> 실제 택시 호출은 제공하지 않습니다.</span>
+            <span className="notice-box"><ShieldAlert size={18} /> 불편 사항은 신고하기로 접수할 수 있습니다.</span>
             <span className="notice-box"><WalletCards size={18} /> 요금은 예상 금액이며 실제 결제 금액과 다를 수 있습니다.</span>
           </section>
         </>
@@ -270,4 +278,46 @@ function getUserId(user) {
 
 function sameId(left, right) {
   return left !== null && left !== undefined && right !== null && right !== undefined && String(left) === String(right);
+}
+
+function readPartyPayload(result) {
+  return result?.party || result?.data || result;
+}
+
+function normalizeParty(party) {
+  if (!party) return party;
+  const members = party.members || party.participants || party.party_members || [];
+  return {
+    ...party,
+    start_place: party.start_place || party.startPlace || party.origin || '출발지 미정',
+    end_place: party.end_place || party.endPlace || party.destination || '목적지 미정',
+    departure_time: party.departure_time || party.departure_at || party.departureTime || party.start_time,
+    meeting_point: party.meeting_point || party.meetingPoint,
+    meeting_note: party.meeting_note || party.meetingNote,
+    current_members: party.current_members ?? members.length,
+    max_members: party.max_members ?? party.capacity ?? 4,
+    per_person_fare: party.per_person_fare ?? party.perPersonFare,
+    members: members.map((member) => ({
+      ...member,
+      user: member.user || member.member || {
+        id: member.user_id || member.id,
+        name: member.user_name || member.name,
+        email: member.user_email || member.email,
+      },
+      joined_at: member.joined_at || member.created_at || member.joinedAt,
+    })),
+  };
+}
+
+function getMemberKey(partyId, member, index) {
+  return `${partyId}-${member.user?.id || member.user_id || member.user?.email || index}-${member.joined_at || 'joined'}`;
+}
+
+function formatMemberName(member) {
+  return member.user?.name || member.name || member.user?.email || member.email || '참여자';
+}
+
+function formatMemberJoinedAt(member) {
+  const value = member.joined_at || member.created_at;
+  return value ? `${formatDateTime(value)} 참여` : '참여 시간 확인 중';
 }

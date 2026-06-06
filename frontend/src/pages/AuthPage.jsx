@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
+import BrandName from '../components/BrandName';
 import EagleMark from '../components/EagleMark';
 import FormField from '../components/FormField';
+import SystemFooter from '../components/SystemFooter';
+import { PRIVACY_SECTIONS, TERMS_SECTIONS } from './LegalPage';
 
 const INITIAL_FORM = {
   name: '',
@@ -13,6 +16,8 @@ const INITIAL_FORM = {
 export default function AuthPage({ mode, onSubmit, submitting, message, navigate, theme, onToggleTheme }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [formError, setFormError] = useState('');
+  const [agreements, setAgreements] = useState({ terms: false, privacy: false });
+  const [legalModal, setLegalModal] = useState(null);
   const isRegister = mode === 'register';
   const isDark = theme === 'dark';
 
@@ -26,6 +31,14 @@ export default function AuthPage({ mode, onSubmit, submitting, message, navigate
     if (isRegister) {
       if (!form.gender) {
         setFormError('성별을 선택해 주세요.');
+        return;
+      }
+      if (!agreements.terms || !agreements.privacy) {
+        setFormError('이용약관과 개인정보 처리방침에 동의해 주세요.');
+        return;
+      }
+      if (!form.email.trim().toLowerCase().endsWith('@yonsei.ac.kr')) {
+        window.alert('현재 지원하지 않는 이메일입니다.');
         return;
       }
 
@@ -52,9 +65,10 @@ export default function AuthPage({ mode, onSubmit, submitting, message, navigate
         <aside className="auth-context">
           <div className="auth-brand">
             <EagleMark />
-            <span>독수리 택시</span>
+            <BrandName />
           </div>
-          <h1>{isRegister ? '학생 계정으로 합승 파티를 시작합니다.' : '계정으로 접속해 파티 화면으로 이동합니다.'}</h1>
+          <h1>{isRegister ? '학교 계정으로 합승 파티를 시작합니다.' : '계정으로 접속해 파티 화면으로 이동합니다.'}</h1>
+          {isRegister && <p className="auth-support-note">현재 연세대학교 학교 계정만 지원합니다.</p>}
         </aside>
 
         <section className="auth-card">
@@ -68,7 +82,7 @@ export default function AuthPage({ mode, onSubmit, submitting, message, navigate
             </button>
           </div>
 
-          <p className="eyebrow">Eagle Taxi Account</p>
+          <p className="eyebrow">Mirae Mobility Account</p>
           <h2>{isRegister ? '회원가입' : '로그인'}</h2>
 
           <form className="form-stack" onSubmit={handleSubmit}>
@@ -129,6 +143,29 @@ export default function AuthPage({ mode, onSubmit, submitting, message, navigate
               required
             />
 
+            {isRegister && (
+              <div className="agreement-box">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={agreements.terms}
+                    onChange={(event) => setAgreements((current) => ({ ...current, terms: event.target.checked }))}
+                  />
+                  <span>이용약관에 동의합니다.</span>
+                  <button className="text-button" type="button" onClick={() => setLegalModal('terms')}>보기</button>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={agreements.privacy}
+                    onChange={(event) => setAgreements((current) => ({ ...current, privacy: event.target.checked }))}
+                  />
+                  <span>개인정보 처리방침에 동의합니다.</span>
+                  <button className="text-button" type="button" onClick={() => setLegalModal('privacy')}>보기</button>
+                </label>
+              </div>
+            )}
+
             {(formError || message) && (
               <p className={message.includes('완료') ? 'success' : 'error'}>
                 {formError || message}
@@ -152,6 +189,30 @@ export default function AuthPage({ mode, onSubmit, submitting, message, navigate
           </p>
         </section>
       </section>
+      {legalModal && (
+        <div className="modal-backdrop legal-modal-backdrop" role="presentation">
+          <section className="legal-modal-card" role="dialog" aria-modal="true" aria-labelledby="legal-modal-title">
+            <div className="card-title row">
+              <div>
+                <p className="eyebrow">{legalModal === 'privacy' ? 'Privacy' : 'Terms'}</p>
+                <h2 id="legal-modal-title">{legalModal === 'privacy' ? '개인정보 처리방침' : '이용약관'}</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setLegalModal(null)} aria-label="닫기">
+                ×
+              </button>
+            </div>
+            <div className="legal-modal-content">
+              {(legalModal === 'privacy' ? PRIVACY_SECTIONS : TERMS_SECTIONS).map(([title, text]) => (
+                <article key={title}>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+      <SystemFooter navigate={navigate} />
     </main>
   );
 }

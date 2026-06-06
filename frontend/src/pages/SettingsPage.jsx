@@ -8,7 +8,6 @@ export default function SettingsPage({ onLogout, user }) {
     ['이름', user?.name || '정보 없음'],
     ['이메일', user?.email || '정보 없음'],
     ['성별', formatGender(user?.gender)],
-    ['권한', formatRole(user?.role)],
     ['계정 생성일', formatDateTime(user?.created_at)],
   ];
 
@@ -50,12 +49,6 @@ function formatGender(gender) {
   if (gender === 'male') return '남성';
   if (gender === 'female') return '여성';
   return '정보 없음';
-}
-
-function formatRole(role) {
-  if (role === 'admin') return '관리자';
-  if (role === 'user') return '일반 사용자';
-  return role || '정보 없음';
 }
 
 function formatDateTime(value) {

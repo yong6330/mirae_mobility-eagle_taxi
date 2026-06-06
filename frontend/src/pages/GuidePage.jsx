@@ -1,35 +1,45 @@
-import { ShieldCheck } from 'lucide-react';
+import { LifeBuoy, MessageCircle } from 'lucide-react';
+import HowToUseSection from '../components/HowToUseSection';
 
-const GUIDE_ITEMS = [
-  ['서비스 한계', '독수리 택시는 실제 택시 호출, 배차, 결제, 운전자 연결을 제공하지 않습니다.'],
-  ['요금 안내', '예상 택시비와 실제 요금은 다를 수 있습니다. 실제 결제는 파티원 간 별도 조율이 필요합니다.'],
-  ['안전 안내', '탑승 전 파티 정보와 만남 장소를 확인하고, 필요하면 채팅으로 세부 사항을 조율하세요.'],
-  ['신고 안내', '신고 버튼은 MVP에서 안내용으로 제공되며 저장 API는 호출하지 않습니다.'],
+const FAQ_ITEMS = [
+  ['파티 추천이 없으면 어떻게 하나요?', '같은 조건으로 바로 새 파티를 만들거나, 파티 목록에서 조건을 넓혀 다시 확인할 수 있습니다.'],
+  ['출발 시간이 바뀌면 어떻게 하나요?', '파티 상세와 채팅에서 참여자에게 변경 내용을 알려 만남 시간을 다시 조율해 주세요.'],
+  ['문제가 생기면 어디에 남기나요?', '파티 상세 화면의 신고하기 버튼을 눌러 상황을 남겨 주세요.'],
 ];
 
 export default function GuidePage({ navigate }) {
   return (
-    <div className="screen-grid">
-      <section className="screen-hero-card compact">
-        <p className="eyebrow">Guide</p>
-        <h1>안전 안내</h1>
-        <p>서비스 이용 전 요금, 안전, 개인정보, MVP 범위를 확인하는 화면입니다.</p>
+    <div className="screen-grid support-page">
+      <section className="screen-hero-card compact support-hero">
+        <div>
+          <p className="eyebrow">Guide</p>
+          <h1>이용 안내</h1>
+          <p>이용 방법과 자주 묻는 질문을 확인할 수 있습니다.</p>
+        </div>
+        <button className="solid-button" type="button" onClick={() => navigate('/support?kind=inquiry')}>
+          <MessageCircle size={18} />
+          1:1 문의하기
+        </button>
       </section>
 
-      <section className="feature-grid guide-grid">
-        {GUIDE_ITEMS.map(([title, text]) => (
-          <article className="workspace-card guide-card" key={title}>
-            <ShieldCheck size={22} />
-            <h2>{title}</h2>
-            <p>{text}</p>
-          </article>
-        ))}
-      </section>
+      <HowToUseSection className="guide-method-section" />
 
-      <section className="workspace-card action-row">
-        <button className="solid-button" type="button" onClick={() => navigate('/main')}>메인으로 이동</button>
-        <button className="quiet-button" type="button" onClick={() => navigate('/terms')}>이용약관 보기</button>
-        <button className="quiet-button" type="button" onClick={() => navigate('/privacy')}>개인정보 처리방침 보기</button>
+      <section className="workspace-card support-form-card">
+        <div className="card-title">
+          <p className="eyebrow">자주 묻는 질문</p>
+          <h2>빠르게 확인하세요.</h2>
+        </div>
+        <div className="faq-list">
+          {FAQ_ITEMS.map(([title, text]) => (
+            <article key={title}>
+              <LifeBuoy size={18} />
+              <div>
+                <strong>{title}</strong>
+                <p>{text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
       </section>
     </div>
   );

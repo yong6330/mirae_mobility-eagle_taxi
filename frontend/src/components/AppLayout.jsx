@@ -1,23 +1,20 @@
 import {
   ClipboardList,
+  CircleHelp,
   Home,
   LogOut,
-  MapPinned,
   Moon,
-  Plus,
-  Search,
-  Shield,
   Sun,
   UserRoundCog,
 } from 'lucide-react';
+import BrandName from './BrandName';
 import EagleMark from './EagleMark';
+import SystemFooter from './SystemFooter';
 
 const NAV_ITEMS = [
   { path: '/main', label: '메인', icon: Home },
-  { path: '/parties', label: '파티 찾기', icon: Search },
-  { path: '/parties/new', label: '파티 만들기', icon: Plus },
-  { path: '/my/parties', label: '내 파티', icon: ClipboardList },
-  { path: '/guide', label: '안전 안내', icon: Shield },
+  { path: '/my/parties', label: '내 이동', icon: ClipboardList },
+  { path: '/guide', label: '이용 안내', icon: CircleHelp },
   { path: '/settings', label: '설정', icon: UserRoundCog },
 ];
 
@@ -35,16 +32,13 @@ export default function AppLayout({
       <header className="workspace-header">
         <button className="brand-button" type="button" onClick={() => navigate(user ? '/main' : '/')}>
           <EagleMark small />
-          <span>독수리 택시</span>
+          <BrandName />
         </button>
 
         <nav className="workspace-nav" aria-label="앱 주요 화면">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const selected =
-              item.path === '/parties'
-                ? currentPath === '/parties' || /^\/parties\/[^/]+(\/chat)?$/.test(currentPath)
-                : currentPath === item.path || currentPath.startsWith(`${item.path}/`);
+            const selected = currentPath === item.path || currentPath.startsWith(`${item.path}/`);
             return (
               <button
                 className={selected ? 'selected' : ''}
@@ -57,16 +51,6 @@ export default function AppLayout({
               </button>
             );
           })}
-          {user?.role === 'admin' && (
-            <button
-              className={currentPath === '/admin' ? 'selected' : ''}
-              type="button"
-              onClick={() => navigate('/admin')}
-            >
-              <MapPinned size={16} />
-              관리자
-            </button>
-          )}
         </nav>
 
         <div className="header-actions">
@@ -94,6 +78,7 @@ export default function AppLayout({
       <section className="workspace-shell">
         {children}
       </section>
+      <SystemFooter navigate={navigate} />
     </main>
   );
 }

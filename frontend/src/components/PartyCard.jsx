@@ -1,32 +1,47 @@
 import { Clock3, MapPin, Users, WalletCards } from 'lucide-react';
 
 export default function PartyCard({ actions, navigate, party }) {
+  const normalized = normalizePartyCard(party);
   return (
     <article className="party-card">
       <div className="party-card-head">
-        <span>{formatStatus(party.status)}</span>
-        {'match_score' in party && <em>{party.match_score}점 추천</em>}
+        <span>{formatStatus(normalized.status)}</span>
+        {'match_score' in normalized && <em>{normalized.match_score}점 추천</em>}
       </div>
-      <h3>{party.start_place} → {party.end_place}</h3>
-      {party.meeting_point && (
+      <h3>{normalized.start_place} → {normalized.end_place}</h3>
+      {normalized.meeting_point && (
         <p className="party-card-note">
           <MapPin size={15} />
-          {party.meeting_point}
+          {normalized.meeting_point}
         </p>
       )}
       <div className="party-meta">
-        <span><Clock3 size={15} /> {formatDateTime(party.departure_time)}</span>
-        <span><Users size={15} /> {party.current_members}/{party.max_members}명</span>
-        <span><WalletCards size={15} /> {formatWon(party.per_person_fare)} / 1인</span>
+        <span><Clock3 size={15} /> {formatDateTime(normalized.departure_time)}</span>
+        <span><Users size={15} /> {normalized.current_members}/{normalized.max_members}명</span>
+        <span><WalletCards size={15} /> {formatWon(normalized.per_person_fare)} / 1인</span>
       </div>
       <div className="party-card-actions">
-        <button className="quiet-button" type="button" onClick={() => navigate(`/parties/${party.id}`)}>
+        <button className="quiet-button" type="button" onClick={() => navigate(`/parties/${normalized.id}`)}>
           상세보기
         </button>
         {actions}
       </div>
     </article>
   );
+}
+
+function normalizePartyCard(party) {
+  return {
+    ...party,
+    id: party.id || party.party_id,
+    start_place: party.start_place || party.startPlace || party.origin || '출발지 미정',
+    end_place: party.end_place || party.endPlace || party.destination || '목적지 미정',
+    departure_time: party.departure_time || party.departure_at || party.departureTime || party.start_time,
+    current_members: party.current_members ?? party.member_count ?? party.members?.length ?? 0,
+    max_members: party.max_members ?? party.capacity ?? 4,
+    per_person_fare: party.per_person_fare ?? party.perPersonFare,
+    meeting_point: party.meeting_point || party.meetingPoint,
+  };
 }
 
 export function formatStatus(status) {

@@ -67,11 +67,15 @@ export const api = {
     request(`/api/parties/${partyId}/cancel`, { method: 'PATCH', body: JSON.stringify(payload) }),
   myParties: () => request('/api/my/parties'),
   messages: (partyId) => request(`/api/parties/${partyId}/messages`),
+  supportThreads: () => request('/api/support/threads'),
+  supportThread: (threadId) => request(`/api/support/threads/${threadId}`),
+  createSupportThread: (payload) => request('/api/support/threads', { method: 'POST', body: JSON.stringify(payload) }),
+  sendSupportMessage: (threadId, payload) =>
+    request(`/api/support/threads/${threadId}/messages`, { method: 'POST', body: JSON.stringify(payload) }),
   estimateFare: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return request(`/api/fares/estimate${query ? `?${query}` : ''}`);
   },
-  adminStats: () => request('/api/admin/stats'),
 };
 
 function formatErrorDetail(detail) {
