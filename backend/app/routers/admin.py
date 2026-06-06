@@ -604,7 +604,7 @@ def get_system_status(
     return AdminSystemStatus(
         api_status="ok",
         db_status=db_status,
-        mobility_provider_configured=bool(settings.mobility_rest_api_key),
+        mobility_provider_configured=settings.mobility_api_key_configured,
         fare_fallback_enabled=settings.allow_fare_fallback,
         server_time=datetime.now(KST),
     )

@@ -98,7 +98,7 @@ def estimate_fare(
     start_lat: float, start_lng: float, end_lat: float, end_lng: float
 ) -> FareEstimate:
     """외부 길찾기 요금 API로 요금/거리/소요시간을 조회한다 (명세 §10-3)."""
-    if not settings.mobility_rest_api_key:
+    if not settings.mobility_api_key_configured:
         return _fallback_or_raise(
             500,
             "요금 산정에 필요한 설정이 없습니다. (외부 요금 API Key 미설정)",
@@ -109,7 +109,8 @@ def estimate_fare(
         "origin": f"{start_lng},{start_lat}",
         "destination": f"{end_lng},{end_lat}",
     }
-    headers = {"Authorization": f"{_MOBILITY_AUTH_PREFIX} {settings.mobility_rest_api_key}"}
+    api_key = settings.mobility_rest_api_key.strip()
+    headers = {"Authorization": f"KakaoAK {api_key}"}
 
     try:
         with httpx.Client(timeout=5.0) as client:
