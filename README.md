@@ -60,6 +60,9 @@ Eagle Taxi는 출발지와 목적지와 희망 출발 시간을 기준으로 같
 - 관리자 메시지 관리
 - 관리자 문의와 신고 대응
 - 관리자 조작 기록
+- 통합 런처 기반 서버 실행과 중지
+- 외부 연결용 터널 실행 보조
+- 실시간 접근 로그 확인
 
 ## 제외 기능
 
@@ -93,7 +96,8 @@ mirae_mobility-eagle_taxi/
 - `backend/`: FastAPI 백엔드와 SQLite 기반 데이터 모델
 - `docs/`: 공개 가능한 프로젝트 문서와 기능 문서
 - `assets/`: 원본 로고와 미리보기 이미지
-- `tools/`: 로컬 실행 보조 도구
+- `tools/`: 로컬 실행 보조 도구와 통합 런처 소스
+- `EagleTaxiLauncher.app/`: macOS용 통합 런처 실행 앱 번들
 - `run-dev-mac.sh`: macOS 통합 실행 스크립트
 - `run-dev.bat`: Windows 통합 실행 스크립트
 
@@ -108,11 +112,28 @@ mirae_mobility-eagle_taxi/
 - `node_modules/`
 - `dist/`
 - `build/`
+- `.venv/`
+- `.idea/`
+- `.DS_Store`
 - `__pycache__/`
 - `.pytest_cache/`
 - SQLite 데이터베이스 파일
 - 운영 키와 개인 키와 토큰
 - 로컬 백업 파일
+
+## 통합 런처
+
+- 런처명: `Eagle Taxi Dev Launcher`
+- 버전: `v.0.1.0-alpha`
+- macOS 실행 파일: `EagleTaxiLauncher.app`
+- 런처 소스: `tools/Eagletaxi/eagle_taxi_launcher.py`
+- 패키징 설정: `tools/Eagletaxi/EagleTaxiLauncher.spec`
+- 아이콘 자산: `tools/Eagletaxi/build_assets/`
+- 주요 기능: 서버 실행과 중지. 의존성 설치. 환경 파일 생성. 시스템 도구 점검. 외부 터널 실행. 실시간 로그 확인.
+- 지원 서버: 백엔드 `8000`. 사용자 프론트 `5174`. 관리자 콘솔 `5173`.
+- 설정 저장 위치: 사용자 홈 디렉터리의 `.eagle_taxi_launcher_config.json`
+- 최초 실행 시 프로젝트 경로와 필수 도구를 단계별로 설정할 수 있습니다.
+- 외부 연결은 임시 공개 URL과 고정 도메인 터널 실행을 보조합니다.
 
 ## 실행 포트
 
@@ -130,6 +151,12 @@ Windows 환경에서는 다음 파일을 실행합니다.
 
 ```bat
 run-dev.bat
+```
+
+macOS 환경에서는 통합 런처 앱을 실행할 수도 있습니다.
+
+```text
+EagleTaxiLauncher.app
 ```
 
 ## 개별 실행
@@ -175,6 +202,10 @@ npm run dev -- --host 127.0.0.1 --port 5173
 - 휴대폰 뷰포트 UI 점검 완료
 - 파티 상세 참여자 응답 `joined_at` 반환 확인 완료
 - 회원가입과 로그인 로컬 API 500 오류 수정 완료
+- 통합 런처 Python 구문 검증 완료
+- 통합 런처 PyInstaller spec 구성 확인 완료
+- 통합 런처 macOS 앱 번들 업로드 완료
+- 원격 `main` 기준 민감 정보 패턴 점검 완료
 
 ## 현재 개발 버전 메모
 
@@ -186,4 +217,7 @@ npm run dev -- --host 127.0.0.1 --port 5173
 - 문의와 신고는 사용자 화면과 관리자 콘솔에서 대화형으로 관리됩니다.
 - 관리자 로그인과 문의 상태 변경은 조작 기록에 남습니다.
 - 비밀번호 해시는 직접 `bcrypt` 검증 방식으로 처리합니다.
+- 통합 런처는 서버 실행과 외부 연결과 로그 확인을 하나의 화면에서 관리합니다.
+- 백엔드는 접속자 확인을 위해 `[ACCESS]` 형식의 접근 로그를 출력합니다.
+- 서비스 프론트와 관리자 콘솔은 외부 도메인 접속을 허용하도록 Vite 설정이 보완되었습니다.
 - 로컬 DB와 로컬 환경 파일은 배포 대상에서 제외합니다.
