@@ -1666,6 +1666,12 @@ p {
   align-items: stretch;
 }
 
+/* detail-grid의 두 카드는 stretch로 높이가 같아지므로, 내부 콘텐츠는 위에서부터 정렬해
+   (제목/목록 사이가 벌어지지 않도록) 좌우 카드의 항목 시작 위치를 맞춘다. */
+.detail-grid > .workspace-card {
+  align-content: start;
+}
+
 .empty-state {
   display: grid;
   justify-items: start;
@@ -5101,8 +5107,12 @@ p {
   margin: 0;
 }
 
-.developer-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+/* 데스크탑(>760px)에서만 개발자 카드 4열. 모바일에서는 !important로 4열이 강제되어
+   카드가 잘리던 문제가 있어, 미디어쿼리로 감싸 모바일 1열 규칙이 적용되도록 한다. */
+@media (min-width: 761px) {
+  .developer-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .developer-card {
@@ -6292,7 +6302,7 @@ p {
 
 .bus-bar-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) 56px;
   gap: 8px;
   align-items: center;
 }
@@ -6315,10 +6325,12 @@ p {
 }
 
 .bus-bar-line em {
+  min-width: 0;
   color: var(--ink);
   font-style: normal;
   font-weight: 920;
   text-align: right;
+  white-space: nowrap;
 }
 
 .bus-legend {
