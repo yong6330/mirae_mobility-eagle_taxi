@@ -173,35 +173,81 @@ p {
   font-weight: 950;
 }
 
-/* 파티 상태 배지 */
+/* 파티 상태 배지 (작은 인라인용 .status-badge / Hero 큰 배지용 .hero-status-badge 공통) */
+.status-badge,
+.hero-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .status-badge {
-  display: inline-block;
   margin: 0 0 10px;
   padding: 3px 10px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
-.status-badge.status-recruiting {
-  background: color-mix(in srgb, var(--blue) 14%, transparent);
+/* Hero section에 크게 노출되는 상태 배지 */
+.hero-status-badge {
+  flex-shrink: 0;
+  padding: 11px 24px;
+  border-radius: 999px;
+  font-size: 19px;
+  font-weight: 900;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+/* 상태별 색상 — 명세 F-PARTY-006 v0.4: recruiting/matched/canceled/expired/completed */
+.status-badge.status-recruiting,
+.hero-status-badge.status-recruiting {
+  background: color-mix(in srgb, var(--blue) 15%, transparent);
   color: var(--blue);
 }
 
-.status-badge.status-matched {
-  background: color-mix(in srgb, #22c55e 14%, transparent);
-  color: #16a34a;
+.status-badge.status-matched,
+.hero-status-badge.status-matched {
+  background: color-mix(in srgb, #22c55e 16%, transparent);
+  color: #15803d;
 }
 
-.status-badge.status-completed {
-  background: color-mix(in srgb, var(--muted) 14%, transparent);
+.status-badge.status-completed,
+.hero-status-badge.status-completed {
+  background: color-mix(in srgb, var(--muted) 16%, transparent);
   color: var(--muted);
 }
 
-.status-badge.status-cancelled {
-  background: color-mix(in srgb, #ef4444 12%, transparent);
+.status-badge.status-canceled,
+.hero-status-badge.status-canceled {
+  background: color-mix(in srgb, #ef4444 13%, transparent);
   color: #dc2626;
+}
+
+.status-badge.status-expired,
+.hero-status-badge.status-expired {
+  background: color-mix(in srgb, #f59e0b 17%, transparent);
+  color: #d97706;
+}
+
+/* 파티 상세 Hero — 좌측 텍스트 + 우측 큰 상태 배지 (1:1 문의 버튼과 동일한 배치) */
+.party-detail-hero-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.party-detail-hero-copy {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.party-detail-hero-copy > * {
+  margin: 0;
 }
 
 .eagle-mark {
@@ -2118,6 +2164,24 @@ p {
     align-items: stretch;
     grid-template-columns: 1fr;
     padding: 12px 18px;
+  }
+
+  /* 파티 상세 Hero — 모바일에서는 상태 배지를 텍스트 아래로 내려 좌측 정렬 */
+  .party-detail-hero-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .hero-status-badge {
+    font-size: 16px;
+    padding: 9px 20px;
+  }
+
+  /* 파티 관리 버튼 — 모바일에서 2열로 균등 정렬 (들쭉날쭉한 줄바꿈 방지) */
+  .party-action-buttons button {
+    flex: 1 1 calc(50% - 5px);
+    justify-content: center;
   }
 
   .header-actions,

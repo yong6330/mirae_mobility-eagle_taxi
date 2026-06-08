@@ -125,14 +125,21 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
 
   return (
     <div className="screen-grid">
-      <section className="screen-hero-card compact">
+      <section className="screen-hero-card compact party-detail-hero">
         <button className="text-button back-button" type="button" onClick={() => navigate('/parties')}>
           <ArrowLeft size={17} />
           파티 목록으로 돌아가기
         </button>
-        <p className="eyebrow">Party Detail</p>
-        <h1>파티 상세</h1>
-        <p>{party ? `${party.start_place}에서 ${party.end_place}까지 함께 이동하는 파티입니다.` : `partyId: ${partyId}`}</p>
+        <div className="party-detail-hero-row">
+          <div className="party-detail-hero-copy">
+            <p className="eyebrow">Party Detail</p>
+            <h1>파티 상세</h1>
+            <p>{party ? `${party.start_place}에서 ${party.end_place}까지 함께 이동하는 파티입니다.` : `partyId: ${partyId}`}</p>
+          </div>
+          {party && (
+            <span className={`hero-status-badge status-${party.status}`}>{formatStatus(party.status)}</span>
+          )}
+        </div>
       </section>
 
       {message && <p className={message.includes('실패') || message.includes('못했습니다') ? 'error' : 'success'}>{message}</p>}
@@ -149,7 +156,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
           <section className="detail-grid">
             <article className="workspace-card">
               <div className="card-title">
-                <span className={`status-badge status-${party.status}`}>{formatStatus(party.status)}</span>
+                <p className="eyebrow">Party Info</p>
                 <h2>파티 정보</h2>
               </div>
               <div className="metric-list">
@@ -214,7 +221,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
                 <p className="eyebrow">Actions</p>
                 <h2>파티 관리</h2>
               </div>
-              <div className="action-row">
+              <div className="action-row party-action-buttons">
                 <button className="solid-button" type="button" onClick={handleJoin} disabled={!canJoin || loading}>
                   <UserPlus size={18} />
                   참여하기
