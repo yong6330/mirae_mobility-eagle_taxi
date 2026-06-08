@@ -28,7 +28,10 @@ export async function request(path, options = {}) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(formatErrorDetail(body.detail) || `API 요청 실패: ${response.status}`);
+    const err = new Error(formatErrorDetail(body.detail) || `API 요청 실패: ${response.status}`);
+    err.errorCode = body.error_code || null;
+    err.httpStatus = response.status;
+    throw err;
   }
 
   if (response.status === 204) return null;

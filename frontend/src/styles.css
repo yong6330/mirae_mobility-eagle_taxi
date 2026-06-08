@@ -173,6 +173,37 @@ p {
   font-weight: 950;
 }
 
+/* 파티 상태 배지 */
+.status-badge {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-badge.status-recruiting {
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  color: var(--blue);
+}
+
+.status-badge.status-matched {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  color: #16a34a;
+}
+
+.status-badge.status-completed {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--muted);
+}
+
+.status-badge.status-cancelled {
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #dc2626;
+}
+
 .eagle-mark {
   position: relative;
   display: inline-grid;
@@ -1654,6 +1685,8 @@ p {
   color: var(--muted);
   font-style: normal;
   font-weight: 800;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .notice-box {
@@ -4934,6 +4967,7 @@ p {
   .hero-summary-row,
   .story-stat-row,
   .pain-card-grid,
+  .review-grid,
   .landing-feature-grid,
   .developer-grid,
   .service-action-grid,

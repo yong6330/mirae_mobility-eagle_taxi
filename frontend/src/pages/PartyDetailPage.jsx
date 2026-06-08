@@ -63,7 +63,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
       setParty(normalizeParty(readPartyPayload(result)));
     } catch (error) {
       setParty(null);
-      setMessage(error.message || '파티 정보를 불러오지 못했습니다.');
+      setMessage(resolveErrorMessage(error, '파티 정보를 불러오지 못했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -77,7 +77,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
       setParty(normalizeParty(readPartyPayload(result)));
       setMessage('파티에 참여했습니다.');
     } catch (error) {
-      setMessage(error.message || '파티 참여에 실패했습니다.');
+      setMessage(resolveErrorMessage(error, '파티 참여에 실패했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -92,14 +92,17 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
       setParty(normalizeParty(readPartyPayload(result)));
       setMessage('파티 참여를 취소했습니다.');
     } catch (error) {
-      setMessage(error.message || '참여 취소에 실패했습니다.');
+      setMessage(resolveErrorMessage(error, '참여 취소에 실패했습니다.'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancel = async () => {
-    if (!window.confirm('생성한 파티를 취소할까요?')) return;
+    const confirmMsg = party?.status === 'matched'
+      ? '파티가 매칭 완료 상태입니다. 모든 참여자의 합승이 취소됩니다. 정말 취소할까요?'
+      : '생성한 파티를 취소할까요?';
+    if (!window.confirm(confirmMsg)) return;
     setLoading(true);
     setMessage('');
     try {
@@ -107,7 +110,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
       setParty(normalizeParty(readPartyPayload(result)));
       setMessage('파티가 취소되었습니다.');
     } catch (error) {
-      setMessage(error.message || '파티 취소에 실패했습니다.');
+      setMessage(resolveErrorMessage(error, '파티 취소에 실패했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -146,7 +149,7 @@ export default function PartyDetailPage({ navigate, partyId, user }) {
           <section className="detail-grid">
             <article className="workspace-card">
               <div className="card-title">
-                <p className="eyebrow">{formatStatus(party.status)}</p>
+                <span className={`status-badge status-${party.status}`}>{formatStatus(party.status)}</span>
                 <h2>파티 정보</h2>
               </div>
               <div className="metric-list">
@@ -320,4 +323,26 @@ function formatMemberName(member) {
 function formatMemberJoinedAt(member) {
   const value = member.joined_at || member.created_at;
   return value ? `${formatDateTime(value)} 참여` : '참여 시간 확인 중';
+}
+
+/** 에러 코드(error_code)가 있으면 사용자 친화적 메시지로, 없으면 fallback 사용. */
+function resolveErrorMessage(error, fallback) {
+  const codeMessages = {
+    PARTY_FULL: '파티 인원이 꽉 찼습니다.',
+    PARTY_TIME_OVERLAP: '같은 시간대에 이미 참여 중인 파티가 있습니다.',
+    PARTY_GENDER_MISMATCH: '성별 매칭 조건에 맞지 않습니다.',
+    PARTY_ALREADY_MEMBER: '이미 참여 중인 파티입니다.',
+    PARTY_NOT_MEMBER: '해당 파티의 참여자가 아닙니다.',
+    PARTY_NOT_FOUND: '파티를 찾을 수 없습니다.',
+    PARTY_CANCELLED: '이미 취소된 파티입니다.',
+    PARTY_COMPLETED: '이미 완료된 파티입니다.',
+    PARTY_STATUS_INVALID: '현재 파티 상태에서는 해당 작업을 수행할 수 없습니다.',
+    PARTY_NOT_OWNER: '파티 생성자만 이 작업을 수행할 수 있습니다.',
+    AUTH_REQUIRED: '로그인이 필요합니다.',
+    AUTH_FORBIDDEN: '권한이 없습니다.',
+  };
+  if (error?.errorCode && codeMessages[error.errorCode]) {
+    return codeMessages[error.errorCode];
+  }
+  return error?.message || fallback;
 }
