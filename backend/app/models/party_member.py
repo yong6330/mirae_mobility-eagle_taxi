@@ -2,10 +2,11 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.utils.time import now_kst_naive
 
 
 class PartyMember(Base):
@@ -16,7 +17,7 @@ class PartyMember(Base):
     party_id: Mapped[int] = mapped_column(ForeignKey("parties.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     joined_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=False), default=now_kst_naive, nullable=False
     )
 
     party = relationship("Party", back_populates="members")
